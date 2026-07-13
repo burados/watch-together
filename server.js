@@ -10,7 +10,13 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+
+if (fs.existsSync(UPLOAD_DIR) && !fs.statSync(UPLOAD_DIR).isDirectory()) {
+  fs.unlinkSync(UPLOAD_DIR);
+}
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR);
+}
 
 // --- Настройка загрузки файлов ---
 const storage = multer.diskStorage({
