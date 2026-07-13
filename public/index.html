@@ -289,25 +289,73 @@
     gap: 6px;
     scrollbar-width: thin;
   }
-  .msg {
-    align-self: flex-start;
-    max-width: 92%;
-    font-size: 13.5px;
-    line-height: 1.45;
-    padding: 6px 10px;
+  /* ---------- Message rows ----------
+     avatar + name + text + time, matching the Telegram/YouTube-Live
+     reference layout. All messages stay left-aligned (public/live-chat
+     style); the current user's own messages get a subtle highlight
+     instead of being moved to the other side. */
+  .msg-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 3px 6px;
     border-radius: var(--radius-sm);
-    background: var(--bg-elevated);
-    word-break: break-word;
     animation: msg-in 0.18s var(--ease);
   }
-  .msg .name { color: var(--accent); font-weight: 600; margin-right: 5px; }
+  .msg-row.own {
+    background: var(--accent-soft);
+  }
+  .msg-avatar {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(0, 0, 0, 0.55);
+    margin-top: 1px;
+  }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .msg-row.own .msg-name { color: var(--text); }
+  .msg-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .msg-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 13.5px;
+    line-height: 1.4;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .msg-time {
+    flex-shrink: 0;
+    font-size: 10.5px;
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
   .msg.system {
     align-self: center;
-    background: transparent;
+    text-align: center;
     color: var(--text-faint);
     font-style: italic;
     font-size: 12px;
     padding: 2px 8px;
+    animation: msg-in 0.18s var(--ease);
   }
   @keyframes msg-in {
     from { opacity: 0; transform: translateY(4px); }
@@ -608,18 +656,76 @@
     requestAnimationFrame(() => input.focus());
   }
 
+  // --- Аватарки: детерминированный цвет по нику, без обращения к серверу ---
+  function avatarColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    const hue = hash % 360;
+    return `hsl(${hue}, 60%, 55%)`;
+  }
+  function initials(str) {
+    const s = (str || '?').trim();
+    return s ? s[0].toUpperCase() : '?';
+  }
+  function formatTime(date) {
+    return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+  }
+
+  function isNearBottom(box, threshold = 60) {
+    return box.scrollHeight - box.scrollTop - box.clientHeight < threshold;
+  }
+
   function addChatMessage(msg) {
     const box = document.getElementById('chatMessages');
-    const div = document.createElement('div');
+    // Не тащим пользователя вниз, если он специально прокрутил вверх
+    // почитать историю — скроллим только если он и так был внизу.
+    const wasNearBottom = isNearBottom(box);
+
     if (msg.system) {
+      const div = document.createElement('div');
       div.className = 'msg system';
       div.textContent = msg.text;
+      box.appendChild(div);
     } else {
-      div.className = 'msg';
-      div.innerHTML = '<span class="name">' + msg.name + ':</span>' + msg.text;
+      const displayName = msg.name || 'Гость';
+      const isOwn = displayName === name;
+
+      const row = document.createElement('div');
+      row.className = 'msg-row' + (isOwn ? ' own' : '');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'msg-avatar';
+      avatar.style.background = avatarColor(displayName);
+      avatar.textContent = initials(displayName);
+
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'msg-body';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'msg-name';
+      nameEl.textContent = isOwn ? displayName + ' (вы)' : displayName;
+
+      const line = document.createElement('div');
+      line.className = 'msg-line';
+
+      const textEl = document.createElement('div');
+      textEl.className = 'msg-text';
+      textEl.textContent = msg.text; // textContent - без риска HTML-инъекции
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'msg-time';
+      timeEl.textContent = formatTime(new Date());
+
+      line.appendChild(textEl);
+      line.appendChild(timeEl);
+      bodyEl.appendChild(nameEl);
+      bodyEl.appendChild(line);
+      row.appendChild(avatar);
+      row.appendChild(bodyEl);
+      box.appendChild(row);
     }
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
+
+    if (wasNearBottom) box.scrollTop = box.scrollHeight;
   }
 </script>
 </body>
