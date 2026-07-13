@@ -204,6 +204,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    transition: height 0.18s var(--ease), max-height 0.18s var(--ease), min-height 0.18s var(--ease);
   }
   video {
     width: 100%;
@@ -217,6 +218,23 @@
     padding: 0 24px;
     font-size: 13.5px;
     line-height: 1.5;
+  }
+
+  /* ---------- Keyboard-open state ----------
+     The video block and the upload/select toolbar are fixed-height
+     (flex-shrink: 0) elements that don't naturally shrink when the
+     on-screen keyboard eats most of the viewport. Left alone, they
+     starve .chat-section down to a sliver. When JS detects the
+     keyboard is open (via visualViewport), it adds body.kb-open:
+     the video shrinks to a small preview and the toolbar (not
+     needed while typing) hides, so chat gets real usable height. */
+  @media (max-width: 899px) {
+    body.kb-open .stage-controls { display: none; }
+    body.kb-open .video-wrap {
+      height: min(18vh, 130px);
+      max-height: 20vh;
+      min-height: 70px;
+    }
   }
 
   .stage-controls {
@@ -271,7 +289,7 @@
   /* ---------- Chat section ---------- */
   .chat-section {
     flex: 1 1 0;
-    min-height: 0;
+    min-height: 110px; /* floor: messages must always have room to show, even under a keyboard */
     display: flex;
     flex-direction: column;
     background: var(--bg-panel);
@@ -492,10 +510,28 @@
 
   // Держим CSS-переменную --app-height в актуальном состоянии для браузеров,
   // где 100dvh не учитывает появление клавиатуры (некоторые версии Android WebView).
+  //
+  // Плюс: определяем открытие клавиатуры сравнением текущей высоты
+  // visualViewport с максимальной ранее увиденной ("высота без клавиатуры").
+  // Когда клавиатура открыта, добавляем body.kb-open - CSS сжимает видео
+  // и прячет панель загрузки, освобождая место под чат (см. root cause
+  // ниже в ответе).
+  let maxSeenHeight = 0;
+  let wasKeyboardOpen = false;
   function setAppHeight() {
     const vv = window.visualViewport;
     const h = vv ? vv.height : window.innerHeight;
     document.documentElement.style.setProperty('--app-height', h + 'px');
+
+    if (h > maxSeenHeight) maxSeenHeight = h;
+    const keyboardOpen = maxSeenHeight - h > 120;
+    document.body.classList.toggle('kb-open', keyboardOpen);
+
+    if (keyboardOpen && !wasKeyboardOpen) {
+      const box = document.getElementById('chatMessages');
+      if (box) box.scrollTop = box.scrollHeight;
+    }
+    wasKeyboardOpen = keyboardOpen;
   }
   setAppHeight();
   if (window.visualViewport) {
@@ -503,7 +539,10 @@
     window.visualViewport.addEventListener('scroll', setAppHeight);
   }
   window.addEventListener('resize', setAppHeight);
-  window.addEventListener('orientationchange', () => setTimeout(setAppHeight, 300));
+  window.addEventListener('orientationchange', () => setTimeout(() => {
+    maxSeenHeight = 0; // сбрасываем эталон - новая ориентация имеет другую высоту
+    setAppHeight();
+  }, 300));
 
   function enterRoom() {
     name = document.getElementById('nameInput').value.trim() || 'Гость';
