@@ -173,16 +173,21 @@
   }
 
   .room-body {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
 
-  /* ---------- Video section ---------- */
+  /* ---------- Video section ----------
+     flex: 0 0 auto + an explicit min()/min-height clamp (not just
+     max-height) so the block always has a real, non-ambiguous size
+     even if `aspect-ratio` is computed late/unreliably by a WebView.
+     This guarantees .chat-section below always receives the rest
+     of the available space instead of being squeezed to 0. */
   .video-section {
-    flex-shrink: 0;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     background: #000;
@@ -191,7 +196,9 @@
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 9;
+    height: min(40vh, 340px);
     max-height: 40vh;
+    min-height: 140px;
     background: #000;
     display: flex;
     align-items: center;
@@ -263,7 +270,7 @@
 
   /* ---------- Chat section ---------- */
   .chat-section {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -271,13 +278,14 @@
     overflow: hidden;
   }
   .chat-messages {
-    flex: 1;
+    /* Always visible, always the scroll container - never toggled off. */
+    display: flex !important;
+    flex-direction: column;
+    flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding: 12px 14px;
-    display: flex;
-    flex-direction: column;
     gap: 6px;
     scrollbar-width: thin;
   }
@@ -354,7 +362,9 @@
       flex: 1;
       width: auto;
       aspect-ratio: auto;
+      height: auto;
       max-height: none;
+      min-height: 0;
     }
     .no-video { padding: 40px 24px; }
 
@@ -419,7 +429,7 @@
           <div class="chat-messages" id="chatMessages"></div>
           <div class="chat-input">
             <input type="text" id="chatInput" placeholder="Написать..." onkeydown="if(event.key==='Enter') sendChat()" />
-            <button onclick="sendChat()">→</button>
+            <button type="button" onmousedown="event.preventDefault()" onclick="sendChat()">→</button>
           </div>
         </div>
       </div>
@@ -593,6 +603,9 @@
     if (!text) return;
     socket.emit('chat-message', { room, text });
     input.value = '';
+    // Keep the keyboard open: re-focus the *same* input node on the next
+    // frame instead of letting focus sit on the button that was tapped.
+    requestAnimationFrame(() => input.focus());
   }
 
   function addChatMessage(msg) {
