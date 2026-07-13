@@ -230,10 +230,11 @@
      needed while typing) hides, so chat gets real usable height. */
   @media (max-width: 899px) {
     body.kb-open .stage-controls { display: none; }
+    body.kb-open .room-topbar { display: none; }
     body.kb-open .video-wrap {
-      height: min(18vh, 130px);
-      max-height: 20vh;
-      min-height: 70px;
+      height: min(28vh, 210px);
+      max-height: 30vh;
+      min-height: 120px;
     }
   }
 
@@ -299,6 +300,7 @@
     /* Always visible, always the scroll container - never toggled off. */
     display: flex !important;
     flex-direction: column;
+    justify-content: flex-end; /* pin conversation to the bottom, like a real chat */
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
