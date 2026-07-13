@@ -47,7 +47,7 @@ app.post('/upload', (req, res) => {
 
 // Список загруженных файлов
 app.get('/videos', (req, res) => {
-  const files = fs.readdirSync(UPLOAD_DIR);
+  const files = fs.readdirSync(UPLOAD_DIR).filter(f => !f.startsWith('.'));
   res.json(files);
 });
 
