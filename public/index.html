@@ -116,7 +116,7 @@
     position: absolute;
     inset: 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     background: #000;
   }
@@ -128,7 +128,7 @@
   .no-video {
     color: var(--text-dim);
     text-align: center;
-    padding: 40px 20px;
+    padding: 90px 20px 20px;
     font-size: 14px;
   }
   .stage-controls {
@@ -234,7 +234,8 @@
   @media (min-width: 900px) {
     .room-layout { display: flex; flex-direction: row; }
     .stage { position: static; flex: 1; display: flex; flex-direction: column; }
-    .video-wrap { position: static; flex: 1; min-height: 240px; }
+    .video-wrap { position: static; flex: 1; min-height: 240px; align-items: center; }
+    .no-video { padding: 40px 20px; }
     .stage-controls {
       position: static;
       background: var(--bg-panel);
@@ -315,8 +316,12 @@
   let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
 
   function setAppHeight() {
-    const h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    const vv = window.visualViewport;
+    const h = vv ? vv.height : window.innerHeight;
     document.documentElement.style.setProperty('--app-height', h + 'px');
+    if (vv) {
+      document.body.style.transform = 'translateY(' + (-vv.offsetTop) + 'px)';
+    }
     window.scrollTo(0, 0);
   }
   setAppHeight();
