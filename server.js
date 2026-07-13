@@ -1,39 +1,3 @@
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer');
-const { Server } = require('socket.io');
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-
-if (fs.existsSync(UPLOAD_DIR) && !fs.statSync(UPLOAD_DIR).isDirectory()) {
-  fs.unlinkSync(UPLOAD_DIR);
-}
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR);
-}
-
-// --- Настройка загрузки файлов ---
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const safeName = Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    cb(null, safeName);
-  }
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 8 * 1024 * 1024 * 1024 } // до 8 ГБ
-});
-
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Загрузка видео
 app.post('/upload', (req, res) => {
   upload.single('video')(req, res, (err) => {
     if (err) {
