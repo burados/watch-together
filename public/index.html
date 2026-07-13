@@ -1,3 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, interactive-widget=resizes-content" />
+<title>Вместе — смотрим фильмы онлайн</title>
+<style>
+  :root {
+    --bg: #0e0d10;
+    --bg-panel: #17151a;
+    --line: #2a2730;
+    --text: #ece7e0;
+    --text-dim: #948d99;
+    --accent: #e8b23d;
+    --accent-dim: #6b5726;
+    --danger: #d1554a;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
     box-shadow: 0 0 12px var(--accent);
   }
   .brand h1 {
@@ -61,11 +97,11 @@
   }
 
   /* --- Комната --- */
-   #room { display: none; }
+  #room { display: none; }
   .room-layout {
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 61px);
+    height: calc(var(--app-height, 100dvh) - 61px);
     overflow: hidden;
   }
   @media (min-width: 900px) {
@@ -164,7 +200,6 @@
     justify-content: space-between;
   }
   .chat-messages {
-  .chat-messages {
     flex: 1;
     overflow-y: auto;
     padding: 12px 16px;
@@ -172,9 +207,6 @@
     flex-direction: column;
     gap: 8px;
     min-height: 0;
-  }
-  @media (min-width: 900px) {
-    .chat-messages { overflow-y: auto; max-height: none; }
   }
   .msg { font-size: 13px; line-height: 1.4; }
   .msg .name { color: var(--accent); font-weight: 600; margin-right: 4px; }
@@ -263,6 +295,14 @@
   let socket;
   let room, name;
   let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
+
+  function setAppHeight() {
+    const h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    document.documentElement.style.setProperty('--app-height', h + 'px');
+  }
+  setAppHeight();
+  window.visualViewport?.addEventListener('resize', setAppHeight);
+  window.addEventListener('resize', setAppHeight);
 
   function enterRoom() {
     name = document.getElementById('nameInput').value.trim() || 'Гость';
@@ -426,4 +466,4 @@
   }
 </script>
 </body>
-            </html>
+</html>
