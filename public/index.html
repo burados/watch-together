@@ -97,34 +97,45 @@
   }
 
   /* --- Комната --- */
-  #room { display: none; }
+   #room { display: none; }
   .room-layout {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 61px);
+    min-height: calc(100dvh - 61px);
   }
   @media (min-width: 900px) {
-    .room-layout { flex-direction: row; }
+    .room-layout { flex-direction: row; height: calc(100dvh - 61px); }
   }
   .stage {
-    flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
     background: #000;
   }
+  @media (max-width: 899px) {
+    .stage {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+  }
+  @media (min-width: 900px) {
+    .stage { flex: 1; height: 100%; }
+  }
   .video-wrap {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #000;
-    min-height: 240px;
+    aspect-ratio: 16 / 9;
+  }
+  @media (min-width: 900px) {
+    .video-wrap { flex: 1; min-height: 240px; aspect-ratio: auto; }
   }
   video {
     width: 100%;
     height: 100%;
-    max-height: 70vh;
+    object-fit: contain;
   }
   .no-video {
     color: var(--text-dim);
