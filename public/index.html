@@ -17,12 +17,15 @@
     --radius: 10px;
   }
   * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
-    min-height: 100vh;
   }
   .brand {
     display: flex;
@@ -283,7 +286,7 @@
         </div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input">
-          <input type="text" id="chatInput" placeholder="Написать..." onkeydown="if(event.key==='Enter') sendChat()" />
+          <input type="text" id="chatInput" placeholder="Написать..." onkeydown="if(event.key==='Enter') sendChat()" onfocus="setTimeout(setAppHeight, 50); setTimeout(setAppHeight, 350);" />
           <button onclick="sendChat()">→</button>
         </div>
       </div>
@@ -299,10 +302,15 @@
   function setAppHeight() {
     const h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
     document.documentElement.style.setProperty('--app-height', h + 'px');
+    window.scrollTo(0, 0);
   }
   setAppHeight();
-  window.visualViewport?.addEventListener('resize', setAppHeight);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setAppHeight);
+    window.visualViewport.addEventListener('scroll', setAppHeight);
+  }
   window.addEventListener('resize', setAppHeight);
+  window.addEventListener('orientationchange', () => setTimeout(setAppHeight, 300));
 
   function enterRoom() {
     name = document.getElementById('nameInput').value.trim() || 'Гость';
