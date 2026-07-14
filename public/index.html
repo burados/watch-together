@@ -409,11 +409,11 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 @media (max-width:899px){
   body.kb-open .stage-toolbar{ display:none; }
   body.kb-open .room-topbar{ display:none; }
-  /* the nav bar is dead weight once the keyboard is up — hiding it lets
-     the chat input sit right above the keyboard instead of floating
-     mid-screen with a big empty gap above it */
-  body.kb-open .bottom-nav{ display:none; }
 }
+body.kb-open .bottom-nav{ padding:5px; }
+body.kb-open .nav-item{ padding:5px 10px; }
+body.kb-open .nav-item svg{ width:16px; height:16px; }
+body.kb-open .nav-item span{ display:none; }
 .room.theater-mode .video-wrap{ height:min(80vh, 720px); max-height:80vh; }
 .room.theater-mode .chat-section{ min-height:96px; }
 
@@ -1067,7 +1067,6 @@ function enterRoom() {
 
   socket = io();
   setupSocket();
-  socket.emit('join-room', { room, name });
   loadVideoList();
 }
 
@@ -1076,6 +1075,22 @@ function enterRoom() {
    ----------------------------------------------------------- */
 function setupSocket() {
   const player = document.getElementById('player');
+
+  // Fires on the initial connect AND on every automatic reconnect
+  // (network drop, phone backgrounded, server restart, etc.) — this is
+  // what used to be missing, so a dropped connection silently stopped
+  // receiving chat/sync until the user manually re-entered the room.
+  let hasConnectedBefore = false;
+  socket.on('connect', () => {
+    socket.emit('join-room', { room, name });
+    loadVideoList();
+    if (hasConnectedBefore) showToast('Соединение восстановлено');
+    hasConnectedBefore = true;
+  });
+
+  socket.on('disconnect', () => {
+    showToast('Соединение потеряно, переподключение…');
+  });
 
   socket.on('room-state', (state) => {
     if (state.video) {
