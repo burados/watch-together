@@ -11,12 +11,16 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const CHAT_IMAGE_DIR = path.join(__dirname, 'uploads', 'chat-images');
 
 if (fs.existsSync(UPLOAD_DIR) && !fs.statSync(UPLOAD_DIR).isDirectory()) {
   fs.unlinkSync(UPLOAD_DIR);
 }
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR);
+}
+if (!fs.existsSync(CHAT_IMAGE_DIR)) {
+  fs.mkdirSync(CHAT_IMAGE_DIR, { recursive: true });
 }
 
 // --- Настройка загрузки файлов ---
@@ -32,13 +36,43 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 * 1024 } // до 8 ГБ
 });
 
+// --- Загрузка картинок в чат (скриншоты из буфера обмена, фото) ---
+const chatImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, CHAT_IMAGE_DIR),
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname || '') || '.png').toLowerCase().replace(/[^a-z0-9.]/g, '') || '.png';
+    cb(null, Date.now() + '-' + randomUUID().slice(0, 8) + ext);
+  }
+});
+const uploadChatImage = multer({
+  storage: chatImageStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // до 15 МБ на картинку
+  fileFilter: (req, file, cb) => {
+    if (!/^image\//.test(file.mimetype)) return cb(new Error('Разрешены только изображения'));
+    cb(null, true);
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
 
 // Загрузка видео
 app.post('/upload', (req, res) => {
   upload.single('video')(req, res, (err) => {
     if (err) {
       console.error('Ошибка загрузки:', err.message);
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
+    res.json({ filename: req.file.filename });
+  });
+});
+
+// Загрузка картинки в чат (скрин из буфера обмена или фото с устройства)
+app.post('/upload-image', (req, res) => {
+  uploadChatImage.single('image')(req, res, (err) => {
+    if (err) {
+      console.error('Ошибка загрузки картинки:', err.message);
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
@@ -136,6 +170,33 @@ function cleanupOldFiles() {
 setInterval(cleanupOldFiles, FILE_CLEANUP_INTERVAL_MS);
 cleanupOldFiles(); // и сразу при старте сервера
 
+// Отдельно чистим старые картинки из чата (скрины/фото) — они ни к какой
+// комнате не привязаны, поэтому просто удаляем всё, что старше FILE_MAX_AGE_MS
+function cleanupOldChatImages() {
+  fs.readdir(CHAT_IMAGE_DIR, (err, files) => {
+    if (err) {
+      console.error('Ошибка чтения папки chat-images при очистке:', err.message);
+      return;
+    }
+    files.forEach((file) => {
+      if (file.startsWith('.')) return;
+      const filePath = path.join(CHAT_IMAGE_DIR, file);
+      fs.stat(filePath, (err, stat) => {
+        if (err || !stat.isFile()) return;
+        if (Date.now() - stat.mtimeMs > FILE_MAX_AGE_MS) {
+          fs.unlink(filePath, (err) => {
+            if (err) console.error(`Не удалось удалить старую картинку чата ${file}:`, err.message);
+            else console.log(`Автоочистка: удалена старая картинка чата ${file}`);
+          });
+        }
+      });
+    });
+  });
+}
+
+setInterval(cleanupOldChatImages, FILE_CLEANUP_INTERVAL_MS);
+cleanupOldChatImages();
+
 io.on('connection', (socket) => {
   let currentRoom = null;
 
@@ -224,8 +285,16 @@ io.on('connection', (socket) => {
     socket.to(room).emit('user-stop-typing', {});
   });
 
-  socket.on('chat-message', ({ room, text }) => {
-    if (!room || !text) return;
+  socket.on('chat-message', ({ room, text, image }) => {
+    if (!room) return;
+    const trimmedText = (text || '').toString().trim().slice(0, 4000);
+    // Картинка обязана быть именем файла, реально загруженным через /upload-image —
+    // никаких произвольных путей/URL тут не принимаем
+    const safeImage = (image && /^[a-zA-Z0-9._-]+$/.test(image) && fs.existsSync(path.join(CHAT_IMAGE_DIR, image)))
+      ? image
+      : null;
+    if (!trimmedText && !safeImage) return; // пустое сообщение без текста и картинки — игнорируем
+
     if (!rooms[room]) rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {} };
     const id = randomUUID();
     rooms[room].reactions[id] = {};
@@ -234,7 +303,8 @@ io.on('connection', (socket) => {
       id,
       system: false,
       name: socket.data.name,
-      text
+      text: trimmedText,
+      image: safeImage
     });
   });
 
