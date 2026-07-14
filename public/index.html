@@ -383,6 +383,14 @@ body.in-room, body.in-room html{ overflow:hidden; }
   background:#000;
   position:relative;
 }
+.stream-link-card{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; padding:24px; text-align:center; color:#fff; z-index:2;
+}
+.stream-link-card .nv-title{ font-size:18px; font-weight:600; }
+.stream-link-card p{ margin:0; opacity:.75; font-size:14px; max-width:360px; }
+.stream-link-card .stream-link-hint{ font-size:12px; opacity:.55; margin-top:6px; }
+.stream-link-card #streamLinkFrom{ font-size:13px; opacity:.6; }
 .video-wrap{
   position:relative;
   width:100%;
@@ -849,7 +857,16 @@ select{
               <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
             </div>
             <div class="nv-title">Пока тишина</div>
-            <p>Загрузите видео или выберите из списка ниже — оно появится сразу у всех в комнате</p>
+            <p>Загрузите видео, выберите из списка ниже — или вставьте ссылку на трансляцию с другого сайта</p>
+          </div>
+          <div class="stream-link-card" id="streamLinkCard" style="display:none;">
+            <div class="nv-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
+            </div>
+            <div class="nv-title">Трансляция готова</div>
+            <p id="streamLinkFrom"></p>
+            <button type="button" class="upload-pill ripple-host" onclick="openStreamLink()">Открыть трансляцию ↗</button>
+            <p class="stream-link-hint">Откроется в новой вкладке — вернитесь сюда за чатом. Синхронизация play/pause для внешних трансляций не работает (плеер чужого сайта нам не подконтролен), но для прямого эфира это и не важно — все смотрят в реальном времени.</p>
           </div>
           <div class="video-loading" id="videoLoading"><div class="spinner"></div></div>
           <video id="player" controls playsinline style="display:none;"></video>
@@ -866,6 +883,10 @@ select{
               <option value="">— выбрать уже загруженное —</option>
             </select>
           </div>
+          <button type="button" class="upload-pill ripple-host" onclick="promptStreamLink()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
+            Ссылка на трансляцию
+          </button>
           <span id="uploadProgress"></span>
         </div>
       </div>
@@ -1248,11 +1269,17 @@ function setupSocket() {
     if (state.video) {
       showVideo(state.video, false);
       player.currentTime = state.currentTime || 0;
+    } else if (state.streamLink) {
+      showStreamLink(state.streamLink, null, false);
     }
   });
 
   socket.on('video-selected', ({ filename }) => {
     showVideo(filename, false);
+  });
+
+  socket.on('stream-link-updated', ({ url, from }) => {
+    showStreamLink(url, from, false);
   });
 
   socket.on('sync-play', ({ time }) => {
@@ -1302,7 +1329,38 @@ function setupSocket() {
 /* -----------------------------------------------------------
    Video
    ----------------------------------------------------------- */
+let currentStreamLink = null;
+
+function promptStreamLink() {
+  const url = window.prompt('Вставьте ссылку на трансляцию (YouTube, Twitch, официальный сайт и т.п.):', currentStreamLink || 'https://');
+  if (!url) return;
+  const trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) { showToast('Ссылка должна начинаться с http:// или https://'); return; }
+  socket.emit('set-stream-link', { room, url: trimmed });
+}
+
+function showStreamLink(url, from, notify) {
+  currentStreamLink = url;
+  const player = document.getElementById('player');
+  player.pause();
+  player.style.display = 'none';
+  document.getElementById('videoLoading').classList.remove('show');
+  document.getElementById('noVideo').style.display = 'none';
+
+  const card = document.getElementById('streamLinkCard');
+  card.style.display = 'flex';
+  document.getElementById('streamLinkFrom').textContent = from ? ('Ссылку добавил(а): ' + from) : url;
+
+  if (notify) socket.emit('set-stream-link', { room, url });
+}
+
+function openStreamLink() {
+  if (currentStreamLink) window.open(currentStreamLink, '_blank', 'noopener');
+}
+
 function showVideo(filename, notify) {
+  currentStreamLink = null;
+  document.getElementById('streamLinkCard').style.display = 'none';
   const player = document.getElementById('player');
   document.getElementById('noVideo').style.display = 'none';
   player.style.display = 'block';
@@ -1778,6 +1836,8 @@ function leaveRoom() {
   player.style.display = 'none';
   document.documentElement.style.setProperty('--video-ar', '16/9');
   document.getElementById('noVideo').style.display = 'flex';
+  document.getElementById('streamLinkCard').style.display = 'none';
+  currentStreamLink = null;
   document.getElementById('videoLoading').classList.remove('show');
   document.getElementById('videoSelect').innerHTML = '<option value="">— выбрать уже загруженное —</option>';
   document.getElementById('uploadProgress').textContent = '';
