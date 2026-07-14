@@ -365,8 +365,8 @@ body.in-room, body.in-room html{ overflow:hidden; }
   position:relative;
   width:100%;
   aspect-ratio:16/9;
-  height:min(58vh, 500px);
-  max-height:58vh;
+  height:var(--video-h, 50vh);
+  max-height:var(--video-h, 50vh);
   min-height:140px;
   background:radial-gradient(circle at 50% 40%, #16151c, #000 75%);
   display:flex; align-items:center; justify-content:center;
@@ -409,11 +409,13 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 @media (max-width:899px){
   body.kb-open .stage-toolbar{ display:none; }
   body.kb-open .room-topbar{ display:none; }
-  body.kb-open .bottom-nav{ display:none; }
-  body.kb-open .video-wrap{ height:min(26vh, 200px); max-height:28vh; min-height:110px; }
 }
-.room.theater-mode .video-wrap{ height:min(78vh, 720px); max-height:78vh; }
-.room.theater-mode .chat-section{ min-height:120px; }
+body.kb-open .bottom-nav{ padding:5px; }
+body.kb-open .nav-item{ padding:5px 10px; }
+body.kb-open .nav-item svg{ width:16px; height:16px; }
+body.kb-open .nav-item span{ display:none; }
+.room.theater-mode .video-wrap{ height:min(80vh, 720px); max-height:80vh; }
+.room.theater-mode .chat-section{ min-height:96px; }
 
 .stage-toolbar{
   flex-shrink:0;
@@ -789,16 +791,15 @@ select{
           <span id="scrollBottomText">Новые сообщения</span>
         </button>
         <div class="chat-input">
-          <button class="icon-btn" id="emojiBtn" onclick="toggleEmojiPicker()" aria-label="Эмодзи">
+          <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
           </button>
-          <input class="field" type="text" id="chatInput" placeholder="Написать..." autocomplete="off"
+          <input class="field" type="text" id="chatInput" placeholder="Написать..." autocomplete="off" enterkeyhint="send"
                  onkeydown="if(event.key==='Enter') sendChat()" oninput="handleTyping()" />
           <button type="button" class="send-btn ripple-host" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </button>
         </div>
-        <div id="emojiPicker" style="display:none; padding:10px 14px 14px; flex-wrap:wrap; gap:6px; background:var(--card); border-top:1px solid var(--border-soft);"></div>
       </div>
     </div>
 
@@ -851,10 +852,20 @@ select{
 <div class="overlay" id="profileOverlay" onclick="if(event.target===this) closeSheet('profileOverlay')">
   <div class="sheet" style="text-align:center;">
     <div class="sheet-handle"></div>
+    <div class="sheet-title" style="justify-content:flex-end; margin-bottom:0;"><button class="icon-btn" onclick="closeSheet('profileOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
     <div class="profile-avatar-lg" id="profileAvatar"></div>
     <div style="font-family:var(--font-display); font-weight:800; font-size:17px;" id="profileName"></div>
     <p style="color:var(--text-secondary); font-size:13px; margin-top:6px;">Вы смотрите как гость в этой комнате</p>
     <button class="btn btn-ghost btn-block ripple-host" style="margin-top:18px;" onclick="closeSheet('profileOverlay')">Готово</button>
+  </div>
+</div>
+
+<!-- Emoji sheet -->
+<div class="overlay" id="emojiOverlay" onclick="if(event.target===this) closeSheet('emojiOverlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Эмодзи <button class="icon-btn" onclick="closeSheet('emojiOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div id="emojiGrid" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
   </div>
 </div>
 
@@ -869,6 +880,7 @@ let unreadCount = 0;
 let typingTimeout = null;
 let lastTypingEmit = 0;
 let remoteTypingTimeout = null;
+let currentTypingUser = null;
 
 /* -----------------------------------------------------------
    Viewport / keyboard handling
@@ -886,6 +898,34 @@ function setAppHeight() {
 
   if (keyboardOpen && !wasKeyboardOpen) scrollChatToBottom(false);
   wasKeyboardOpen = keyboardOpen;
+  sizeVideoWrap(h);
+}
+
+/* Sizes the mobile video panel from real, measured element heights instead
+   of a guessed vh fraction, so it's as large as possible on any device
+   while always leaving the chat panel a usable minimum — the chat-section's
+   own min-height (110px) is the hard floor this respects. */
+function sizeVideoWrap(appH) {
+  if (window.innerWidth >= 900) return; // desktop sizes the video via flex, not this var
+  const roomEl = document.getElementById('room');
+  if (!roomEl || getComputedStyle(roomEl).display === 'none') return;
+
+  const kbOpen = document.body.classList.contains('kb-open');
+  const topbar = document.querySelector('.room-topbar');
+  const toolbar = document.querySelector('.stage-toolbar');
+  const nav = document.querySelector('.bottom-nav');
+
+  const topbarH = (!kbOpen && topbar) ? topbar.offsetHeight : 0;
+  const toolbarH = (!kbOpen && toolbar) ? toolbar.offsetHeight : 0;
+  const navH = nav ? nav.getBoundingClientRect().height + 10 : 0; // + its own bottom margin; nav is always visible now
+
+  const chatFloor = kbOpen ? 90 : 150; // keeps chat comfortably usable, never crushed
+  const minH = kbOpen ? 100 : 160;
+  const maxH = appH * (kbOpen ? 0.34 : 0.72);
+
+  let videoH = appH - topbarH - toolbarH - navH - chatFloor;
+  videoH = Math.max(minH, Math.min(videoH, maxH));
+  document.documentElement.style.setProperty('--video-h', videoH + 'px');
 }
 setAppHeight();
 if (window.visualViewport) {
@@ -1004,6 +1044,7 @@ function joinRoom(e) {
 }
 
 function enterRoom() {
+  if (socket) return; // already joined/joining a room - ignore duplicate calls (e.g. a rapid double-tap)
   name = document.getElementById('nameInput').value.trim() || 'Гость';
   room = document.getElementById('roomInput').value.trim();
   if (!room) { showToast('Введите код комнаты'); return; }
@@ -1013,6 +1054,7 @@ function enterRoom() {
   document.body.classList.add('in-room');
   document.getElementById('roomBadge').textContent = 'комната: ' + room;
   document.getElementById('settingsRoomCode').textContent = room;
+  requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
 
   const av = document.getElementById('profileAvatar');
   av.style.background = avatarColor(name);
@@ -1156,16 +1198,22 @@ async function handleUpload(event) {
 }
 
 async function loadVideoList() {
-  const res = await fetch('/videos');
-  const files = await res.json();
   const select = document.getElementById('videoSelect');
-  select.innerHTML = '<option value="">— выбрать уже загруженное —</option>';
-  files.forEach(f => {
-    const opt = document.createElement('option');
-    opt.value = f;
-    opt.textContent = f.replace(/^\d+-/, '');
-    select.appendChild(opt);
-  });
+  try {
+    const res = await fetch('/videos');
+    if (!res.ok) throw new Error('status ' + res.status);
+    const files = await res.json();
+    select.innerHTML = '<option value="">— выбрать уже загруженное —</option>';
+    files.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f.replace(/^\d+-/, '');
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error('Не удалось получить список видео:', e);
+    select.innerHTML = '<option value="">— не удалось загрузить список —</option>';
+  }
 }
 
 function pickExisting() {
@@ -1203,6 +1251,7 @@ function stopTypingEmit() {
 
 function showTyping(who) {
   const row = document.getElementById('typingRow');
+  currentTypingUser = who;
   document.getElementById('typingText').textContent = who + ' печатает';
   row.classList.add('show');
   clearTimeout(remoteTypingTimeout);
@@ -1210,6 +1259,7 @@ function showTyping(who) {
   if (isNearBottom(document.getElementById('chatMessages'), 90)) scrollChatToBottom(false);
 }
 function hideTyping() {
+  currentTypingUser = null;
   document.getElementById('typingRow').classList.remove('show');
 }
 
@@ -1264,8 +1314,8 @@ function addChatMessage(msg) {
     div.textContent = msg.text;
     box.appendChild(div);
   } else {
-    hideTyping();
     const displayName = msg.name || 'Гость';
+    if (displayName === currentTypingUser) hideTyping();
     const isOwn = displayName === name;
 
     const row = document.createElement('div');
@@ -1315,58 +1365,44 @@ function addChatMessage(msg) {
    Emoji picker (lightweight, no external deps)
    ----------------------------------------------------------- */
 const EMOJI_SET = ['😀','😂','😍','😎','🔥','🎬','🍿','👍','❤️','😢','😱','🙌','👏','🤔','😴','🎉'];
-function toggleEmojiPicker() {
-  const el = document.getElementById('emojiPicker');
-  const open = el.style.display === 'flex';
-  if (open) { el.style.display = 'none'; return; }
-  el.innerHTML = '';
-  el.style.display = 'flex';
+function openEmojiPicker() {
+  const grid = document.getElementById('emojiGrid');
+  grid.innerHTML = '';
   EMOJI_SET.forEach(em => {
     const b = document.createElement('button');
     b.textContent = em;
-    b.style.cssText = 'font-size:22px; background:var(--surface); border:1px solid var(--border); border-radius:10px; width:40px; height:40px; cursor:pointer;';
+    b.className = 'ripple-host';
+    b.style.cssText = 'font-size:24px; background:var(--surface); border:1px solid var(--border); border-radius:12px; width:48px; height:48px; cursor:pointer;';
     b.onclick = () => {
       const input = document.getElementById('chatInput');
       input.value += em;
+      closeSheet('emojiOverlay');
       input.focus();
     };
-    el.appendChild(b);
+    grid.appendChild(b);
   });
+  openSheet('emojiOverlay');
 }
 
 /* -----------------------------------------------------------
    Bottom nav / theater mode / sheets
    ----------------------------------------------------------- */
 function setNav(which) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const roomRoot = document.getElementById('roomRoot');
+  if (which === 'upload') { document.getElementById('fileInput').click(); return; }
+  if (which === 'settings') { openSettings(); return; }
+  if (which === 'profile') { openSheet('profileOverlay'); return; }
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (which === 'home') {
     document.getElementById('navHome').classList.add('active');
     roomRoot.classList.toggle('theater-mode');
-    if (!roomRoot.classList.contains('theater-mode')) document.getElementById('navHome').classList.add('active');
-    return;
-  }
-  if (which === 'upload') {
-    document.getElementById('navHome').classList.add('active');
-    document.getElementById('fileInput').click();
-    return;
-  }
-  if (which === 'chat') {
-    document.getElementById('navHome').classList.add('active');
+    sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  } else if (which === 'chat') {
+    document.getElementById('navChat').classList.add('active');
     roomRoot.classList.remove('theater-mode');
     document.getElementById('chatInput').focus();
     scrollChatToBottom(true);
-    return;
-  }
-  if (which === 'settings') {
-    document.getElementById('navHome').classList.add('active');
-    openSettings();
-    return;
-  }
-  if (which === 'profile') {
-    document.getElementById('navHome').classList.add('active');
-    openSheet('profileOverlay');
-    return;
   }
 }
 
@@ -1376,12 +1412,48 @@ function closeSheet(id) { document.getElementById(id).classList.remove('show'); 
 
 function copyRoomCode() {
   if (!room) return;
-  navigator.clipboard?.writeText(room).then(() => showToast('Код комнаты скопирован')).catch(() => {});
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(room).then(() => showToast('Код комнаты скопирован')).catch(() => fallbackCopy(room));
+  } else {
+    fallbackCopy(room);
+  }
+}
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast(ok ? 'Код комнаты скопирован' : 'Не удалось скопировать код');
+  } catch (e) {
+    showToast('Не удалось скопировать код');
+  }
 }
 
 function leaveRoom() {
   closeSheet('settingsOverlay');
   if (socket) { socket.disconnect(); socket = null; }
+
+  const player = document.getElementById('player');
+  player.pause();
+  player.removeAttribute('src');
+  player.load();
+  player.style.display = 'none';
+  document.getElementById('noVideo').style.display = 'flex';
+  document.getElementById('videoLoading').classList.remove('show');
+  document.getElementById('videoSelect').innerHTML = '<option value="">— выбрать уже загруженное —</option>';
+  document.getElementById('uploadProgress').textContent = '';
+
+  document.getElementById('chatMessages').innerHTML = '';
+  hideTyping();
+  unreadCount = 0;
+  updateScrollBtn();
+
   document.getElementById('room').style.display = 'none';
   document.getElementById('gate').style.display = 'flex';
   document.body.classList.remove('in-room');
@@ -1399,26 +1471,38 @@ function leaveRoom() {
   if (saved) document.documentElement.style.setProperty('--chat-width', saved + 'px');
 
   let dragging = false;
-  handle.addEventListener('mousedown', (e) => {
+
+  function startDrag(e) {
     dragging = true;
     handle.classList.add('dragging');
     e.preventDefault();
-  });
-  window.addEventListener('mousemove', (e) => {
+  }
+  function moveDrag(clientX) {
     if (!dragging) return;
     const roomBody = document.querySelector('.room-body');
     const rect = roomBody.getBoundingClientRect();
-    let w = rect.right - e.clientX;
+    let w = rect.right - clientX;
     w = Math.max(300, Math.min(560, w));
     document.documentElement.style.setProperty('--chat-width', w + 'px');
-  });
-  window.addEventListener('mouseup', () => {
+  }
+  function endDrag() {
     if (!dragging) return;
     dragging = false;
     handle.classList.remove('dragging');
     const w = getComputedStyle(document.documentElement).getPropertyValue('--chat-width').trim();
     localStorage.setItem('wt_chat_width', parseInt(w, 10));
-  });
+  }
+
+  handle.addEventListener('mousedown', startDrag);
+  window.addEventListener('mousemove', (e) => moveDrag(e.clientX));
+  window.addEventListener('mouseup', endDrag);
+  // if the mouse button is released outside the window, stop dragging on the next move
+  window.addEventListener('mousemove', (e) => { if (dragging && e.buttons === 0) endDrag(); });
+
+  handle.addEventListener('touchstart', startDrag, { passive: false });
+  window.addEventListener('touchmove', (e) => { if (dragging) moveDrag(e.touches[0].clientX); }, { passive: true });
+  window.addEventListener('touchend', endDrag);
+  window.addEventListener('touchcancel', endDrag);
 })();
 </script>
 </body>
