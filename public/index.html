@@ -424,6 +424,7 @@ body.in-room, body.in-room html{ overflow:hidden; }
 .video-wrap:fullscreen .stream-frame{
   width:100vw; height:100vh;
 }
+.video-wrap:fullscreen .stream-frame-bar{ display:none !important; }
 .expand-btn{
   position:absolute; top:10px; left:10px; z-index:3;
   width:34px; height:34px; border-radius:9px; border:0; cursor:pointer;
@@ -1432,6 +1433,14 @@ document.addEventListener('fullscreenchange', () => {
   const expandIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>';
   btn.innerHTML = document.fullscreenElement ? collapseIcon : expandIcon;
   btn.title = document.fullscreenElement ? 'Свернуть видео' : 'Развернуть видео';
+
+  const bar = document.getElementById('streamFrameBar');
+  if (document.fullscreenElement) {
+    bar.dataset.wasVisible = bar.style.display === 'flex' ? '1' : '0';
+    bar.style.display = 'none';
+  } else if (bar.dataset.wasVisible === '1') {
+    bar.style.display = 'flex';
+  }
 });
 
 function hideStreamFrame() {
