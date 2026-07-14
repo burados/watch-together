@@ -4,6 +4,14 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Watch: burado × otroverr</title>
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('wt_theme');
+    if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  } catch (e) {}
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -405,6 +413,87 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
   animation:spin .8s linear infinite;
 }
 
+/* -----------------------------------------------------------
+   Reactions
+   ----------------------------------------------------------- */
+.reactions-layer{
+  position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:6;
+}
+.reaction-float{
+  position:absolute; bottom:8px; font-size:30px; line-height:1;
+  animation:reaction-rise 2.6s ease-out forwards;
+  will-change:transform, opacity;
+}
+@keyframes reaction-rise{
+  0%{ transform:translateY(0) scale(.6); opacity:0; }
+  12%{ opacity:1; transform:translateY(-10px) scale(1.05); }
+  100%{ transform:translateY(-220px) scale(1) translateX(var(--drift, 0px)); opacity:0; }
+}
+.reaction-fab{
+  position:absolute; right:12px; bottom:12px; z-index:7;
+  width:42px; height:42px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:19px;
+  background:rgba(21,21,27,.72); backdrop-filter:blur(6px);
+  border:1px solid var(--border-strong);
+  box-shadow:var(--shadow-sm);
+  transition:transform .15s var(--ease), background .18s var(--ease);
+}
+.reaction-fab:active{ transform:scale(.9); }
+.reaction-bar{
+  position:absolute; right:12px; bottom:60px; z-index:7;
+  display:flex; flex-direction:column; gap:6px;
+  padding:8px; border-radius:var(--radius-lg);
+  background:rgba(21,21,27,.85); backdrop-filter:blur(10px);
+  border:1px solid var(--border-strong);
+  box-shadow:var(--shadow-md);
+  opacity:0; transform:translateY(8px) scale(.92); pointer-events:none;
+  transition:opacity .18s var(--ease), transform .18s var(--ease);
+}
+.reaction-bar.show{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+.reaction-bar button{
+  width:38px; height:38px; font-size:20px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s var(--ease), transform .15s var(--ease);
+}
+.reaction-bar button:hover{ background:var(--surface-2); }
+.reaction-bar button:active{ transform:scale(.85); }
+
+/* -----------------------------------------------------------
+   Theme toggle (light mode overrides)
+   ----------------------------------------------------------- */
+html[data-theme="light"]{
+  --bg:#F4F3F7;
+  --bg-glow-a: rgba(124,92,255,.08);
+  --bg-glow-b: rgba(201,168,78,.10);
+  --card:#FFFFFF;
+  --surface:#FFFFFF;
+  --surface-2:#EFEEF4;
+  --border: rgba(20,20,30,.09);
+  --border-soft: rgba(20,20,30,.05);
+  --border-strong: rgba(20,20,30,.16);
+  --text:#17171C;
+  --text-secondary:#55555F;
+  --text-faint:#8B8B96;
+  --shadow-sm: 0 4px 14px rgba(20,20,30,.08);
+  --shadow-md: 0 16px 44px rgba(20,20,30,.12);
+  --shadow-lg: 0 28px 70px rgba(20,20,30,.16);
+}
+html[data-theme="light"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #0d0d10, #000 75%); }
+html[data-theme="light"] .reaction-fab,
+html[data-theme="light"] .reaction-bar{ background:rgba(255,255,255,.85); }
+
+.theme-switch{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:4px; border-radius:var(--radius-full);
+  background:var(--surface-2); border:1px solid var(--border);
+}
+.theme-switch button{
+  padding:7px 13px; border-radius:var(--radius-full); font-size:12.5px; font-weight:700;
+  color:var(--text-faint); transition:background .18s var(--ease), color .18s var(--ease);
+}
+.theme-switch button.active{ background:var(--primary); color:var(--primary-ink); }
+
 /* keyboard-open squeeze (mobile) */
 @media (max-width:899px){
   body.kb-open .stage-toolbar{ display:none; }
@@ -751,6 +840,9 @@ select{
           </div>
           <div class="video-loading" id="videoLoading"><div class="spinner"></div></div>
           <video id="player" controls playsinline style="display:none;"></video>
+          <div class="reactions-layer" id="reactionsLayer"></div>
+          <button class="reaction-fab ripple-host" onclick="toggleReactionBar()" aria-label="Реакции">😀</button>
+          <div class="reaction-bar" id="reactionBar"></div>
         </div>
 
         <div class="stage-toolbar">
@@ -830,7 +922,21 @@ select{
       <span class="label">Зрителей онлайн</span>
       <span class="value" id="settingsViewers">1</span>
     </div>
-    <button class="btn btn-danger btn-block ripple-host" style="margin-top:18px;" onclick="leaveRoom()">Покинуть комнату</button>
+    <div class="settings-row">
+      <span class="label">Тема</span>
+      <div class="theme-switch">
+        <button id="themeDarkBtn" onclick="setTheme('dark')">Тёмная</button>
+        <button id="themeLightBtn" onclick="setTheme('light')">Светлая</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <span class="label">Уведомления о сообщениях</span>
+      <button class="icon-btn ripple-host" id="notifToggleBtn" onclick="toggleNotifications()" aria-label="Уведомления">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      </button>
+    </div>
+    <button class="btn btn-ghost btn-block ripple-host" style="margin-top:8px;" onclick="shareRoom()">Поделиться комнатой</button>
+    <button class="btn btn-danger btn-block ripple-host" style="margin-top:10px;" onclick="leaveRoom()">Покинуть комнату</button>
   </div>
 </div>
 
@@ -866,6 +972,8 @@ let typingTimeout = null;
 let lastTypingEmit = 0;
 let remoteTypingTimeout = null;
 let currentTypingUser = null;
+let notificationsEnabled = localStorage.getItem('wt_notifications') === '1';
+let audioCtx = null;
 
 /* -----------------------------------------------------------
    Viewport / keyboard handling
@@ -950,6 +1058,13 @@ document.addEventListener('DOMContentLoaded', () => {
    Ripple micro-interaction
    ----------------------------------------------------------- */
 document.addEventListener('click', (e) => {
+  const bar = document.getElementById('reactionBar');
+  if (bar && bar.classList.contains('show') && !bar.contains(e.target) && !e.target.closest('.reaction-fab')) {
+    bar.classList.remove('show');
+  }
+});
+
+document.addEventListener('click', (e) => {
   const host = e.target.closest('.ripple-host');
   if (!host) return;
   const rect = host.getBoundingClientRect();
@@ -1030,6 +1145,14 @@ function escapeHtml(str) {
 }
 renderRecentRooms();
 
+(function prefillRoomFromLink() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const r = params.get('room');
+    if (r) document.getElementById('roomInput').value = r;
+  } catch (e) {}
+})();
+
 /* -----------------------------------------------------------
    Home actions
    ----------------------------------------------------------- */
@@ -1070,6 +1193,8 @@ function enterRoom() {
   document.getElementById('profileName').textContent = name;
 
   saveRecentRoom(room, name);
+  updateThemeButtons();
+  updateNotifButton();
 
   socket = io();
   setupSocket();
@@ -1131,6 +1256,11 @@ function setupSocket() {
 
   socket.on('chat-message', (msg) => {
     addChatMessage(msg);
+    if (!msg.system && msg.name !== name) notifyIncomingMessage(msg);
+  });
+
+  socket.on('reaction', ({ emoji }) => {
+    spawnReactionFloat(emoji);
   });
 
   socket.on('user-count', (count) => {
@@ -1444,6 +1574,131 @@ function fallbackCopy(text) {
   } catch (e) {
     showToast('Не удалось скопировать код');
   }
+}
+
+/* -----------------------------------------------------------
+   Theme
+   ----------------------------------------------------------- */
+function setTheme(t) {
+  if (t === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  try { localStorage.setItem('wt_theme', t); } catch (e) {}
+  updateThemeButtons();
+}
+function updateThemeButtons() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  const darkBtn = document.getElementById('themeDarkBtn');
+  const lightBtn = document.getElementById('themeLightBtn');
+  if (!darkBtn || !lightBtn) return;
+  darkBtn.classList.toggle('active', !isLight);
+  lightBtn.classList.toggle('active', isLight);
+}
+
+/* -----------------------------------------------------------
+   Share room
+   ----------------------------------------------------------- */
+function shareRoom() {
+  if (!room) return;
+  const url = location.origin + location.pathname + '?room=' + encodeURIComponent(room);
+  if (navigator.share) {
+    navigator.share({ title: 'Watch together', text: 'Присоединяйся к комнате «' + room + '»', url })
+      .catch(() => {});
+  } else {
+    copyRoomCode();
+  }
+}
+
+/* -----------------------------------------------------------
+   Notifications (sound + browser notification when tab hidden)
+   ----------------------------------------------------------- */
+function toggleNotifications() {
+  if (!notificationsEnabled) {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(perm => {
+        notificationsEnabled = true;
+        try { localStorage.setItem('wt_notifications', '1'); } catch (e) {}
+        updateNotifButton();
+        showToast(perm === 'granted' ? 'Уведомления включены' : 'Уведомления включены (звук в приложении)');
+      });
+      return;
+    }
+    notificationsEnabled = true;
+    showToast('Уведомления включены');
+  } else {
+    notificationsEnabled = false;
+    showToast('Уведомления выключены');
+  }
+  try { localStorage.setItem('wt_notifications', notificationsEnabled ? '1' : '0'); } catch (e) {}
+  updateNotifButton();
+}
+function updateNotifButton() {
+  const btn = document.getElementById('notifToggleBtn');
+  if (!btn) return;
+  btn.style.color = notificationsEnabled ? 'var(--primary)' : '';
+  btn.style.borderColor = notificationsEnabled ? 'var(--primary)' : '';
+}
+function playPingSound() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, audioCtx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.36);
+  } catch (e) {}
+}
+function notifyIncomingMessage(msg) {
+  if (!notificationsEnabled) return;
+  if (!document.hidden) return; // приложение открыто и на виду — незачем шуметь
+  playPingSound();
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification((msg.name || 'Гость') + ' пишет', { body: msg.text, tag: 'wt-chat-' + room });
+    } catch (e) {}
+  }
+}
+
+/* -----------------------------------------------------------
+   Reactions
+   ----------------------------------------------------------- */
+const REACTION_SET = ['❤️','😂','😱','🔥','👏','🍿'];
+function toggleReactionBar() {
+  const bar = document.getElementById('reactionBar');
+  if (!bar.childElementCount) {
+    REACTION_SET.forEach(em => {
+      const b = document.createElement('button');
+      b.textContent = em;
+      b.className = 'ripple-host';
+      b.onclick = () => { sendReaction(em); bar.classList.remove('show'); };
+      bar.appendChild(b);
+    });
+  }
+  bar.classList.toggle('show');
+}
+function sendReaction(emoji) {
+  if (!socket) return;
+  socket.emit('reaction', { room, emoji });
+  spawnReactionFloat(emoji);
+}
+function spawnReactionFloat(emoji) {
+  const layer = document.getElementById('reactionsLayer');
+  if (!layer) return;
+  const el = document.createElement('div');
+  el.className = 'reaction-float';
+  el.textContent = emoji;
+  const leftPct = 10 + Math.random() * 70;
+  el.style.left = leftPct + '%';
+  el.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
+  layer.appendChild(el);
+  setTimeout(() => el.remove(), 2700);
 }
 
 function leaveRoom() {
