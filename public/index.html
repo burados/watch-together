@@ -46,6 +46,7 @@
   --ease-spring: cubic-bezier(.34,1.56,.64,1);
   --app-height: 100dvh;
   --chat-width: 392px;
+  --video-ar: 16/9;
   --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -364,14 +365,13 @@ body.in-room, body.in-room html{ overflow:hidden; }
 .video-wrap{
   position:relative;
   width:100%;
-  aspect-ratio:16/9;
-  height:var(--video-h, 50vh);
+  aspect-ratio:var(--video-ar, 16/9);
   max-height:var(--video-h, 50vh);
   min-height:140px;
   background:radial-gradient(circle at 50% 40%, #16151c, #000 75%);
   display:flex; align-items:center; justify-content:center;
   overflow:hidden;
-  transition:height .2s var(--ease), max-height .2s var(--ease), min-height .2s var(--ease);
+  transition:max-height .2s var(--ease), min-height .2s var(--ease), aspect-ratio .2s var(--ease);
 }
 video{ width:100%; height:100%; object-fit:contain; background:#000; }
 
@@ -415,7 +415,7 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
      the originally measured viewport height */
   body.chat-focused .bottom-nav{ display:none; }
 }
-.room.theater-mode .video-wrap{ height:min(80vh, 720px); max-height:80vh; }
+.room.theater-mode .video-wrap{ max-height:min(80vh, 720px); }
 .room.theater-mode .chat-section{ min-height:96px; }
 
 .stage-toolbar{
@@ -519,18 +519,21 @@ select{
 .typing-dots span:nth-child(2){ animation-delay:.15s; }
 .typing-dots span:nth-child(3){ animation-delay:.3s; }
 
+.scroll-btn-wrap{
+  flex-shrink:0;
+  display:flex; justify-content:center;
+  max-height:0; overflow:hidden;
+  transition:max-height .22s var(--ease);
+}
+.scroll-btn-wrap.show{ max-height:48px; }
 .scroll-bottom-btn{
-  position:absolute; left:50%; bottom:78px; transform:translate(-50%, 8px);
   display:flex; align-items:center; gap:6px;
+  margin:4px 0 6px;
   padding:8px 14px; border-radius:var(--radius-full);
   background:var(--surface-2); border:1px solid var(--border-strong);
   color:var(--text); font-size:12px; font-weight:700;
   box-shadow:var(--shadow-md);
-  opacity:0; pointer-events:none;
-  transition:opacity .2s var(--ease), transform .2s var(--ease);
-  z-index:10;
 }
-.scroll-bottom-btn.show{ opacity:1; pointer-events:auto; transform:translate(-50%, 0); }
 .scroll-bottom-btn svg{ width:13px; height:13px; }
 .unread-badge{
   background:var(--accent); color:#fff; font-size:10.5px; font-weight:800;
@@ -787,10 +790,12 @@ select{
           <div class="typing-dots"><span></span><span></span><span></span></div>
           <span id="typingText"></span>
         </div>
-        <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollChatToBottom(true)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-          <span id="scrollBottomText">Новые сообщения</span>
-        </button>
+        <div class="scroll-btn-wrap" id="scrollBottomWrap">
+          <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollChatToBottom(true)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            <span id="scrollBottomText">Новые сообщения</span>
+          </button>
+        </div>
         <div class="chat-input">
           <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
@@ -915,6 +920,7 @@ function sizeVideoWrap(appH) {
   const topbar = document.querySelector('.room-topbar');
   const toolbar = document.querySelector('.stage-toolbar');
   const nav = document.querySelector('.bottom-nav');
+  const chatInputEl = document.querySelector('.chat-input');
 
   const topbarH = (!kbOpen && topbar) ? topbar.offsetHeight : 0;
   const toolbarH = (!kbOpen && toolbar) ? toolbar.offsetHeight : 0;
@@ -922,8 +928,13 @@ function sizeVideoWrap(appH) {
   const navH = (nav && getComputedStyle(nav).display !== 'none')
     ? nav.getBoundingClientRect().height + 10 : 0; // + its own bottom margin
 
-  const chatFloor = kbOpen ? 80 : 150; // keeps chat comfortably usable, never crushed
-  const minH = kbOpen ? 100 : 160;
+  const chatInputH = (kbOpen && chatInputEl) ? chatInputEl.offsetHeight : 64;
+  // ~2 message rows worth of height (with a bit extra so a 3rd row peeks in
+  // to signal the list scrolls), on top of the real input height
+  const TWO_MSG_ROWS_H = 130;
+
+  const chatFloor = kbOpen ? (chatInputH + TWO_MSG_ROWS_H) : 150; // keeps chat comfortably usable, never crushed
+  const minH = kbOpen ? 90 : 160;
   const maxH = appH * (kbOpen ? 0.62 : 0.72);
 
   let videoH = appH - topbarH - toolbarH - navH - chatFloor;
@@ -1167,6 +1178,16 @@ function showVideo(filename, notify) {
   player.style.display = 'block';
   player.src = '/video/' + filename;
 
+  // reset to a sane default until we know the real dimensions, then match
+  // the video-wrap's aspect ratio to the actual video so object-fit:contain
+  // has nothing left to letterbox
+  document.documentElement.style.setProperty('--video-ar', '16/9');
+  player.onloadedmetadata = () => {
+    if (player.videoWidth && player.videoHeight) {
+      document.documentElement.style.setProperty('--video-ar', player.videoWidth + '/' + player.videoHeight);
+    }
+  };
+
   const loading = document.getElementById('videoLoading');
   player.onloadstart = () => loading.classList.add('show');
   player.onwaiting = () => loading.classList.add('show');
@@ -1321,13 +1342,13 @@ function scrollChatToBottom(smooth) {
   updateScrollBtn();
 }
 function updateScrollBtn() {
-  const btn = document.getElementById('scrollBottomBtn');
+  const wrap = document.getElementById('scrollBottomWrap');
   if (unreadCount > 0) {
-    btn.classList.add('show');
+    wrap.classList.add('show');
     document.getElementById('scrollBottomText').textContent =
       unreadCount + (unreadCount === 1 ? ' новое сообщение' : ' новых сообщения');
   } else {
-    btn.classList.remove('show');
+    wrap.classList.remove('show');
   }
 }
 document.addEventListener('DOMContentLoaded', () => {
@@ -1477,6 +1498,7 @@ function leaveRoom() {
   player.removeAttribute('src');
   player.load();
   player.style.display = 'none';
+  document.documentElement.style.setProperty('--video-ar', '16/9');
   document.getElementById('noVideo').style.display = 'flex';
   document.getElementById('videoLoading').classList.remove('show');
   document.getElementById('videoSelect').innerHTML = '<option value="">— выбрать уже загруженное —</option>';
