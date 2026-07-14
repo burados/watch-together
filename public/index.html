@@ -414,50 +414,51 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 }
 
 /* -----------------------------------------------------------
-   Reactions
+   Message reactions
    ----------------------------------------------------------- */
-.reactions-layer{
-  position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:6;
-}
-.reaction-float{
-  position:absolute; bottom:8px; font-size:30px; line-height:1;
-  animation:reaction-rise 2.6s ease-out forwards;
-  will-change:transform, opacity;
-}
-@keyframes reaction-rise{
-  0%{ transform:translateY(0) scale(.6); opacity:0; }
-  12%{ opacity:1; transform:translateY(-10px) scale(1.05); }
-  100%{ transform:translateY(-220px) scale(1) translateX(var(--drift, 0px)); opacity:0; }
-}
-.reaction-fab{
-  position:absolute; right:12px; bottom:12px; z-index:7;
-  width:42px; height:42px; border-radius:50%;
+.msg-row{ position:relative; }
+.msg-react-btn{
+  flex-shrink:0; width:22px; height:22px; border-radius:50%;
   display:flex; align-items:center; justify-content:center;
-  font-size:19px;
-  background:rgba(21,21,27,.72); backdrop-filter:blur(6px);
-  border:1px solid var(--border-strong);
-  box-shadow:var(--shadow-sm);
-  transition:transform .15s var(--ease), background .18s var(--ease);
+  background:transparent; color:var(--text-faint);
+  opacity:.5; transition:opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+  cursor:pointer; margin-left:auto;
 }
-.reaction-fab:active{ transform:scale(.9); }
-.reaction-bar{
-  position:absolute; right:12px; bottom:60px; z-index:7;
-  display:flex; flex-direction:column; gap:6px;
-  padding:8px; border-radius:var(--radius-lg);
-  background:rgba(21,21,27,.85); backdrop-filter:blur(10px);
-  border:1px solid var(--border-strong);
-  box-shadow:var(--shadow-md);
-  opacity:0; transform:translateY(8px) scale(.92); pointer-events:none;
-  transition:opacity .18s var(--ease), transform .18s var(--ease);
+.msg-row:hover .msg-react-btn,
+.msg-react-btn.force-show{ opacity:1; }
+.msg-react-btn:hover{ background:var(--surface-2); color:var(--text); opacity:1; }
+.msg-react-btn svg{ width:14px; height:14px; }
+
+.msg-react-picker{
+  position:absolute; bottom:100%; margin-bottom:6px; z-index:20;
+  display:flex; gap:2px; padding:5px;
+  background:var(--surface); border:1px solid var(--border-strong);
+  border-radius:var(--radius-full); box-shadow:var(--shadow-md);
+  opacity:0; transform:translateY(6px) scale(.9); pointer-events:none;
+  transition:opacity .16s var(--ease), transform .16s var(--ease-spring);
 }
-.reaction-bar.show{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
-.reaction-bar button{
-  width:38px; height:38px; font-size:20px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  transition:background .15s var(--ease), transform .15s var(--ease);
+.msg-row.own .msg-react-picker{ right:8px; }
+.msg-row:not(.own) .msg-react-picker{ left:42px; }
+.msg-react-picker.show{ opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+.msg-react-picker button{
+  width:32px; height:32px; border-radius:50%; font-size:17px;
+  display:flex; align-items:center; justify-content:center; background:none; cursor:pointer;
+  transition:transform .12s var(--ease-spring), background .15s var(--ease);
 }
-.reaction-bar button:hover{ background:var(--surface-2); }
-.reaction-bar button:active{ transform:scale(.85); }
+.msg-react-picker button:hover{ background:var(--surface-2); transform:scale(1.15); }
+.msg-react-picker button:active{ transform:scale(.85); }
+
+.msg-reactions{ display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
+.msg-reactions:empty{ display:none; margin-top:0; }
+.reaction-chip{
+  display:flex; align-items:center; gap:4px;
+  padding:2px 8px; border-radius:var(--radius-full);
+  background:var(--surface); border:1px solid var(--border);
+  font-size:12px; font-weight:700; color:var(--text-secondary);
+  cursor:pointer; transition:background .15s var(--ease), border-color .15s var(--ease), transform .1s var(--ease);
+}
+.reaction-chip:active{ transform:scale(.92); }
+.reaction-chip.mine{ background:var(--primary-soft); border-color:var(--primary); color:var(--primary); }
 
 /* -----------------------------------------------------------
    Theme toggle (light mode overrides)
@@ -480,8 +481,7 @@ html[data-theme="light"]{
   --shadow-lg: 0 28px 70px rgba(20,20,30,.16);
 }
 html[data-theme="light"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #0d0d10, #000 75%); }
-html[data-theme="light"] .reaction-fab,
-html[data-theme="light"] .reaction-bar{ background:rgba(255,255,255,.85); }
+html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
 
 .theme-switch{
   display:inline-flex; align-items:center; gap:8px;
@@ -840,9 +840,6 @@ select{
           </div>
           <div class="video-loading" id="videoLoading"><div class="spinner"></div></div>
           <video id="player" controls playsinline style="display:none;"></video>
-          <div class="reactions-layer" id="reactionsLayer"></div>
-          <button class="reaction-fab ripple-host" onclick="toggleReactionBar()" aria-label="Реакции">😀</button>
-          <div class="reaction-bar" id="reactionBar"></div>
         </div>
 
         <div class="stage-toolbar">
@@ -1058,9 +1055,8 @@ document.addEventListener('DOMContentLoaded', () => {
    Ripple micro-interaction
    ----------------------------------------------------------- */
 document.addEventListener('click', (e) => {
-  const bar = document.getElementById('reactionBar');
-  if (bar && bar.classList.contains('show') && !bar.contains(e.target) && !e.target.closest('.reaction-fab')) {
-    bar.classList.remove('show');
+  if (!e.target.closest('.msg-react-picker') && !e.target.closest('.msg-react-btn')) {
+    closeAllReactionPickers();
   }
 });
 
@@ -1259,8 +1255,8 @@ function setupSocket() {
     if (!msg.system && msg.name !== name) notifyIncomingMessage(msg);
   });
 
-  socket.on('reaction', ({ emoji }) => {
-    spawnReactionFloat(emoji);
+  socket.on('message-reaction-update', ({ messageId, reactions }) => {
+    updateMessageReactions(messageId, reactions);
   });
 
   socket.on('user-count', (count) => {
@@ -1466,6 +1462,7 @@ function addChatMessage(msg) {
 
     const row = document.createElement('div');
     row.className = 'msg-row' + (isOwn ? ' own' : '');
+    if (msg.id) row.dataset.id = msg.id;
 
     const avatar = document.createElement('div');
     avatar.className = 'msg-avatar';
@@ -1492,11 +1489,24 @@ function addChatMessage(msg) {
 
     line.appendChild(textEl);
     line.appendChild(timeEl);
+
+    if (msg.id) {
+      const reactBtn = document.createElement('button');
+      reactBtn.type = 'button';
+      reactBtn.className = 'msg-react-btn';
+      reactBtn.setAttribute('aria-label', 'Реакция на сообщение');
+      reactBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>';
+      reactBtn.onclick = (ev) => { ev.stopPropagation(); toggleMessageReactionPicker(msg.id, reactBtn); };
+      line.appendChild(reactBtn);
+    }
+
     bodyEl.appendChild(nameEl);
     bodyEl.appendChild(line);
     row.appendChild(avatar);
     row.appendChild(bodyEl);
     inner.appendChild(row);
+
+    if (msg.reactions) renderMessageReactions(row, msg.reactions);
   }
 
   if (wasNearBottom) box.scrollTop = box.scrollHeight;
@@ -1667,38 +1677,69 @@ function notifyIncomingMessage(msg) {
 }
 
 /* -----------------------------------------------------------
-   Reactions
+   Message reactions
    ----------------------------------------------------------- */
-const REACTION_SET = ['❤️','😂','😱','🔥','👏','🍿'];
-function toggleReactionBar() {
-  const bar = document.getElementById('reactionBar');
-  if (!bar.childElementCount) {
-    REACTION_SET.forEach(em => {
+const MSG_REACTION_SET = ['👍','❤️','😂','😮','😢','🔥'];
+
+function closeAllReactionPickers() {
+  document.querySelectorAll('.msg-react-picker.show').forEach(p => p.classList.remove('show'));
+}
+
+function toggleMessageReactionPicker(messageId, btnEl) {
+  const row = btnEl.closest('.msg-row');
+  let picker = row.querySelector('.msg-react-picker');
+  if (!picker) {
+    picker = document.createElement('div');
+    picker.className = 'msg-react-picker';
+    MSG_REACTION_SET.forEach(em => {
       const b = document.createElement('button');
+      b.type = 'button';
       b.textContent = em;
-      b.className = 'ripple-host';
-      b.onclick = () => { sendReaction(em); bar.classList.remove('show'); };
-      bar.appendChild(b);
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        sendMessageReaction(messageId, em);
+        picker.classList.remove('show');
+      };
+      picker.appendChild(b);
     });
+    row.appendChild(picker);
   }
-  bar.classList.toggle('show');
+  const willShow = !picker.classList.contains('show');
+  closeAllReactionPickers();
+  if (willShow) picker.classList.add('show');
 }
-function sendReaction(emoji) {
-  if (!socket) return;
-  socket.emit('reaction', { room, emoji });
-  spawnReactionFloat(emoji);
+
+function sendMessageReaction(messageId, emoji) {
+  if (!socket || !messageId) return;
+  socket.emit('message-reaction', { room, messageId, emoji });
 }
-function spawnReactionFloat(emoji) {
-  const layer = document.getElementById('reactionsLayer');
-  if (!layer) return;
-  const el = document.createElement('div');
-  el.className = 'reaction-float';
-  el.textContent = emoji;
-  const leftPct = 10 + Math.random() * 70;
-  el.style.left = leftPct + '%';
-  el.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
-  layer.appendChild(el);
-  setTimeout(() => el.remove(), 2700);
+
+function renderMessageReactions(row, reactions) {
+  let box = row.querySelector('.msg-reactions');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'msg-reactions';
+    row.querySelector('.msg-body').appendChild(box);
+  }
+  box.innerHTML = '';
+  Object.keys(reactions || {}).forEach(emoji => {
+    const users = reactions[emoji];
+    if (!users || !users.length) return;
+    const mine = users.includes(name);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'reaction-chip' + (mine ? ' mine' : '');
+    chip.title = users.join(', ');
+    chip.innerHTML = `<span>${emoji}</span><span>${users.length}</span>`;
+    chip.onclick = () => sendMessageReaction(row.dataset.id, emoji);
+    box.appendChild(chip);
+  });
+}
+
+function updateMessageReactions(messageId, reactions) {
+  const row = document.querySelector('.msg-row[data-id="' + CSS.escape(messageId) + '"]');
+  if (!row) return;
+  renderMessageReactions(row, reactions);
 }
 
 function leaveRoom() {
