@@ -409,11 +409,11 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 @media (max-width:899px){
   body.kb-open .stage-toolbar{ display:none; }
   body.kb-open .room-topbar{ display:none; }
+  /* the nav bar is dead weight once the keyboard is up — hiding it lets
+     the chat input sit right above the keyboard instead of floating
+     mid-screen with a big empty gap above it */
+  body.kb-open .bottom-nav{ display:none; }
 }
-body.kb-open .bottom-nav{ padding:5px; }
-body.kb-open .nav-item{ padding:5px 10px; }
-body.kb-open .nav-item svg{ width:16px; height:16px; }
-body.kb-open .nav-item span{ display:none; }
 .room.theater-mode .video-wrap{ height:min(80vh, 720px); max-height:80vh; }
 .room.theater-mode .chat-section{ min-height:96px; }
 
@@ -917,11 +917,13 @@ function sizeVideoWrap(appH) {
 
   const topbarH = (!kbOpen && topbar) ? topbar.offsetHeight : 0;
   const toolbarH = (!kbOpen && toolbar) ? toolbar.offsetHeight : 0;
-  const navH = nav ? nav.getBoundingClientRect().height + 10 : 0; // + its own bottom margin; nav is always visible now
+  // nav is hidden while the keyboard is open, so don't reserve space for it
+  const navH = (nav && getComputedStyle(nav).display !== 'none')
+    ? nav.getBoundingClientRect().height + 10 : 0; // + its own bottom margin
 
-  const chatFloor = kbOpen ? 90 : 150; // keeps chat comfortably usable, never crushed
+  const chatFloor = kbOpen ? 80 : 150; // keeps chat comfortably usable, never crushed
   const minH = kbOpen ? 100 : 160;
-  const maxH = appH * (kbOpen ? 0.34 : 0.72);
+  const maxH = appH * (kbOpen ? 0.62 : 0.72);
 
   let videoH = appH - topbarH - toolbarH - navH - chatFloor;
   videoH = Math.max(minH, Math.min(videoH, maxH));
