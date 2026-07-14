@@ -155,6 +155,11 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('reaction', ({ room, emoji }) => {
+    if (!room || !emoji) return;
+    io.to(room).emit('reaction', { emoji, name: socket.data.name || 'Гость' });
+  });
+
   socket.on('disconnect', () => {
     if (currentRoom) {
       io.to(currentRoom).emit('chat-message', {
