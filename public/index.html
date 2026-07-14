@@ -652,6 +652,29 @@ select{
   animation:msg-in .22s var(--ease);
 }
 
+.msg-image{
+  display:block; max-width:220px; max-height:220px; width:auto; height:auto;
+  border-radius:12px; margin-top:4px; cursor:zoom-in;
+  border:1px solid var(--border-soft); object-fit:cover;
+}
+
+.chat-attach-preview{
+  display:none; align-items:center; gap:10px;
+  padding:8px 12px; background:var(--card);
+  border-top:1px solid var(--border-soft);
+}
+.chat-attach-preview.show{ display:flex; }
+.chat-attach-preview img{
+  width:44px; height:44px; object-fit:cover; border-radius:9px;
+  border:1px solid var(--border-soft);
+}
+.chat-attach-preview .caption{ flex:1; min-width:0; font-size:12.5px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-attach-preview button{
+  border:0; cursor:pointer; width:26px; height:26px; border-radius:8px;
+  background:var(--surface); color:var(--text-secondary); font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+}
+
 .typing-row{
   display:none; align-items:center; gap:8px;
   padding:4px 8px 8px; font-size:12px; color:var(--text-faint);
@@ -947,11 +970,20 @@ select{
           <div class="typing-dots"><span></span><span></span><span></span></div>
           <span id="typingText"></span>
         </div>
+        <div class="chat-attach-preview" id="chatAttachPreview">
+          <img id="chatAttachThumb" alt="" />
+          <span class="caption" id="chatAttachCaption">Картинка готова к отправке</span>
+          <button type="button" onclick="clearChatAttachment()" aria-label="Убрать картинку">✕</button>
+        </div>
         <div class="chat-input">
+          <button class="icon-btn" id="attachBtn" onmousedown="event.preventDefault()" onclick="document.getElementById('chatImageInput').click()" aria-label="Прикрепить фото">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5-9 9"/></svg>
+          </button>
+          <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="handleChatImageSelect(event)" />
           <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
           </button>
-          <input class="field" type="text" id="chatInput" placeholder="Написать..." autocomplete="off" enterkeyhint="send"
+          <input class="field" type="text" id="chatInput" placeholder="Написать... (Ctrl+V — вставить скриншот)" autocomplete="off" enterkeyhint="send"
                  onkeydown="if(event.key==='Enter') sendChat()" oninput="handleTyping()" />
           <button type="button" class="send-btn ripple-host" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -1561,14 +1593,114 @@ function pickExisting() {
 /* -----------------------------------------------------------
    Chat
    ----------------------------------------------------------- */
+let pendingChatImage = null; // File объект, ожидающий отправки
+
+function handleChatImageSelect(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // чтобы повторный выбор того же файла тоже сработал
+  if (file) setPendingChatImage(file);
+}
+
+function handleChatPaste(event) {
+  if (!document.body.classList.contains('in-room')) return; // работаем только внутри активной комнаты
+  const items = event.clipboardData && event.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type && item.type.startsWith('image/')) {
+      event.preventDefault(); // не даём вставить бинарные данные как текст в поле ввода
+      const file = item.getAsFile();
+      if (file) setPendingChatImage(file);
+      return;
+    }
+  }
+  // если в буфере не картинка — ничего не делаем, обычная вставка текста идёт своим чередом
+}
+document.addEventListener('paste', handleChatPaste);
+
+function setPendingChatImage(file) {
+  if (!file.type || !file.type.startsWith('image/')) {
+    showToast('Можно прикрепить только изображение');
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    showToast('Картинка слишком большая (максимум 15 МБ)');
+    return;
+  }
+  pendingChatImage = file;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('chatAttachThumb').src = reader.result;
+  };
+  reader.readAsDataURL(file);
+
+  document.getElementById('chatAttachCaption').textContent = file.name || 'Картинка готова к отправке';
+  document.getElementById('chatAttachPreview').classList.add('show');
+  document.getElementById('chatInput').focus();
+}
+
+function clearChatAttachment() {
+  pendingChatImage = null;
+  document.getElementById('chatAttachPreview').classList.remove('show');
+  document.getElementById('chatAttachThumb').src = '';
+}
+
+function uploadChatImage(file) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload-image');
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error('Сервер вернул код ' + xhr.status));
+        return;
+      }
+      try {
+        const res = JSON.parse(xhr.responseText);
+        if (!res.filename) { reject(new Error('Сервер не вернул имя файла')); return; }
+        resolve(res.filename);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.onerror = () => reject(new Error('Ошибка сети при загрузке картинки'));
+    xhr.send(formData);
+  });
+}
+
 function sendChat() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
-  if (!text) return;
-  socket.emit('chat-message', { room, text });
+  const imageFile = pendingChatImage;
+
+  if (!text && !imageFile) return;
+
+  if (!imageFile) {
+    socket.emit('chat-message', { room, text });
+    input.value = '';
+    stopTypingEmit();
+    requestAnimationFrame(() => input.focus());
+    return;
+  }
+
+  // Есть картинка — сперва грузим её на сервер, потом отправляем сообщение
+  const caption = document.getElementById('chatAttachCaption');
+  caption.textContent = 'Отправка...';
   input.value = '';
   stopTypingEmit();
-  requestAnimationFrame(() => input.focus());
+
+  uploadChatImage(imageFile)
+    .then((filename) => {
+      socket.emit('chat-message', { room, text, image: filename });
+      clearChatAttachment();
+      requestAnimationFrame(() => input.focus());
+    })
+    .catch((err) => {
+      console.error('Не удалось загрузить картинку:', err);
+      showToast('Не удалось отправить картинку');
+      caption.textContent = imageFile.name || 'Картинка готова к отправке';
+    });
 }
 
 function handleTyping() {
@@ -1665,7 +1797,7 @@ function addChatMessage(msg) {
     timeEl.className = 'msg-time';
     timeEl.textContent = formatTime(new Date());
 
-    line.appendChild(textEl);
+    if (msg.text) line.appendChild(textEl);
     line.appendChild(timeEl);
 
     if (msg.id) {
@@ -1680,6 +1812,17 @@ function addChatMessage(msg) {
 
     bodyEl.appendChild(nameEl);
     bodyEl.appendChild(line);
+
+    if (msg.image) {
+      const img = document.createElement('img');
+      img.className = 'msg-image';
+      img.src = '/chat-images/' + msg.image;
+      img.loading = 'lazy';
+      img.alt = 'Изображение из чата';
+      img.onclick = () => window.open('/chat-images/' + msg.image, '_blank', 'noopener');
+      bodyEl.appendChild(img);
+    }
+
     row.appendChild(avatar);
     row.appendChild(bodyEl);
     inner.appendChild(row);
@@ -1939,6 +2082,7 @@ function leaveRoom() {
   document.getElementById('videoLoading').classList.remove('show');
   document.getElementById('videoSelect').innerHTML = '<option value="">— выбрать уже загруженное —</option>';
   document.getElementById('uploadProgress').textContent = '';
+  clearChatAttachment();
 
   document.getElementById('chatMessagesInner').innerHTML = '';
   hideTyping();
