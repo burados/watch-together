@@ -137,6 +137,16 @@ io.on('connection', (socket) => {
     socket.to(room).emit('sync-seek', { time });
   });
 
+  socket.on('typing', ({ room, name }) => {
+    if (!room) return;
+    socket.to(room).emit('user-typing', { name: name || socket.data.name || 'Гость' });
+  });
+
+  socket.on('stop-typing', ({ room }) => {
+    if (!room) return;
+    socket.to(room).emit('user-stop-typing', {});
+  });
+
   socket.on('chat-message', ({ room, text }) => {
     io.to(room).emit('chat-message', {
       system: false,
