@@ -417,6 +417,21 @@ body.in-room, body.in-room html{ overflow:hidden; }
   overflow:hidden;
   transition:max-height .2s var(--ease), min-height .2s var(--ease), aspect-ratio .2s var(--ease);
 }
+.video-wrap:fullscreen{
+  max-height:100vh; height:100vh; aspect-ratio:auto;
+}
+.video-wrap:fullscreen video,
+.video-wrap:fullscreen .stream-frame{
+  width:100vw; height:100vh;
+}
+.expand-btn{
+  position:absolute; top:10px; left:10px; z-index:3;
+  width:34px; height:34px; border-radius:9px; border:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.55); backdrop-filter:blur(6px); color:#fff;
+}
+.expand-btn svg{ width:17px; height:17px; }
+.expand-btn:active{ transform:scale(.92); }
 video{ width:100%; height:100%; object-fit:contain; background:#000; }
 
 .no-video{
@@ -867,6 +882,9 @@ select{
     <div class="room-body">
       <div class="video-section">
         <div class="video-wrap" id="videoWrap">
+          <button type="button" class="expand-btn ripple-host" id="expandBtn" onclick="toggleFullscreen()" aria-label="Развернуть видео" title="Развернуть видео" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
+          </button>
           <div class="no-video" id="noVideo">
             <div class="nv-icon">
               <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
@@ -1387,6 +1405,8 @@ function showStreamLink(url, from, notify) {
   bar.style.display = 'flex';
   document.getElementById('streamFrameFrom').textContent = from ? ('Добавил(а): ' + from) : '';
 
+  document.getElementById('expandBtn').style.display = 'flex';
+
   if (notify) socket.emit('set-stream-link', { room, url });
 }
 
@@ -1396,6 +1416,23 @@ function openStreamLink() {
   // страница внутри iframe останется пустой/белой — тогда жмём эту кнопку.
   if (currentStreamLink) window.open(currentStreamLink, '_blank', 'noopener');
 }
+
+function toggleFullscreen() {
+  const wrap = document.getElementById('videoWrap');
+  if (!document.fullscreenElement) {
+    (wrap.requestFullscreen || wrap.webkitRequestFullscreen)?.call(wrap);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('expandBtn');
+  const collapseIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v4a2 2 0 01-2 2H3m18 0h-4a2 2 0 01-2-2V3M3 15h4a2 2 0 012 2v4m6-6h4a2 2 0 002-2v4"/></svg>';
+  const expandIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>';
+  btn.innerHTML = document.fullscreenElement ? collapseIcon : expandIcon;
+  btn.title = document.fullscreenElement ? 'Свернуть видео' : 'Развернуть видео';
+});
 
 function hideStreamFrame() {
   const frame = document.getElementById('streamFrame');
@@ -1412,6 +1449,8 @@ function showVideo(filename, notify) {
   document.getElementById('noVideo').style.display = 'none';
   player.style.display = 'block';
   player.src = '/video/' + filename;
+
+  document.getElementById('expandBtn').style.display = 'flex';
 
   // reset to a sane default until we know the real dimensions, then match
   // the video-wrap's aspect ratio to the actual video so object-fit:contain
@@ -1885,6 +1924,8 @@ function leaveRoom() {
   document.getElementById('noVideo').style.display = 'flex';
   document.getElementById('streamLinkCard').style.display = 'none';
   hideStreamFrame();
+  document.getElementById('expandBtn').style.display = 'none';
+  if (document.fullscreenElement) document.exitFullscreen?.();
   currentStreamLink = null;
   document.getElementById('videoLoading').classList.remove('show');
   document.getElementById('videoSelect').innerHTML = '<option value="">— выбрать уже загруженное —</option>';
