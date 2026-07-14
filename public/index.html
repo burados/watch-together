@@ -12,6 +12,19 @@
   } catch (e) {}
 })();
 </script>
+
+<!-- PWA: манифест и иконки -->
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<meta name="theme-color" content="#09090B" />
+
+<!-- iOS: чтобы при добавлении на экран открывалось как отдельное приложение -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Вместе" />
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -971,6 +984,18 @@ let remoteTypingTimeout = null;
 let currentTypingUser = null;
 let notificationsEnabled = localStorage.getItem('wt_notifications') === '1';
 let audioCtx = null;
+
+/* -----------------------------------------------------------
+   PWA: регистрация service worker'а (нужно, чтобы сайт можно было
+   "Добавить на экран" как отдельное приложение, особенно на Android)
+   ----------------------------------------------------------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('Service worker не зарегистрирован:', err.message);
+    });
+  });
+}
 
 /* -----------------------------------------------------------
    Viewport / keyboard handling
