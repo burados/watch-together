@@ -85,7 +85,56 @@ app.get('/video/:filename', (req, res) => {
 });
 
 // --- Комнаты и синхронизация ---
-const rooms = {}; // roomId -> { video, currentTime, playing, users: Set }
+const rooms = {}; // roomId -> { video, currentTime, playing, reactions, cleanupTimer }
+
+// Через сколько минут после того, как комната опустела, удалять её из памяти
+const ROOM_EMPTY_TTL_MS = (parseInt(process.env.ROOM_EMPTY_TTL_MINUTES, 10) || 15) * 60 * 1000;
+
+// Планирует удаление комнаты из памяти, если она останется пустой
+function scheduleRoomCleanup(room) {
+  if (!rooms[room]) return;
+  if (rooms[room].cleanupTimer) clearTimeout(rooms[room].cleanupTimer);
+  rooms[room].cleanupTimer = setTimeout(() => {
+    const count = io.sockets.adapter.rooms.get(room)?.size || 0;
+    if (count === 0) {
+      delete rooms[room];
+      console.log(`Комната "${room}" удалена из памяти (пустовала ${ROOM_EMPTY_TTL_MS / 60000} мин.)`);
+    }
+  }, ROOM_EMPTY_TTL_MS);
+}
+
+// --- Автоочистка старых видеофайлов ---
+// Сколько дней хранить файл с момента последнего изменения, если он не используется
+// ни в одной активной комнате прямо сейчас
+const FILE_MAX_AGE_MS = (parseInt(process.env.FILE_MAX_AGE_DAYS, 10) || 3) * 24 * 60 * 60 * 1000;
+const FILE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // проверка раз в час
+
+function cleanupOldFiles() {
+  const inUse = new Set(Object.values(rooms).map((r) => r.video).filter(Boolean));
+
+  fs.readdir(UPLOAD_DIR, (err, files) => {
+    if (err) {
+      console.error('Ошибка чтения папки uploads при очистке:', err.message);
+      return;
+    }
+    files.forEach((file) => {
+      if (file.startsWith('.') || inUse.has(file)) return; // не трогаем скрытые и активно используемые файлы
+      const filePath = path.join(UPLOAD_DIR, file);
+      fs.stat(filePath, (err, stat) => {
+        if (err || !stat.isFile()) return;
+        if (Date.now() - stat.mtimeMs > FILE_MAX_AGE_MS) {
+          fs.unlink(filePath, (err) => {
+            if (err) console.error(`Не удалось удалить старый файл ${file}:`, err.message);
+            else console.log(`Автоочистка: удалён старый файл ${file}`);
+          });
+        }
+      });
+    });
+  });
+}
+
+setInterval(cleanupOldFiles, FILE_CLEANUP_INTERVAL_MS);
+cleanupOldFiles(); // и сразу при старте сервера
 
 io.on('connection', (socket) => {
   let currentRoom = null;
@@ -99,8 +148,21 @@ io.on('connection', (socket) => {
       rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {} };
     }
 
+    // Если комната была запланирована к удалению (опустела), отменяем удаление —
+    // кто-то вернулся
+    if (rooms[room].cleanupTimer) {
+      clearTimeout(rooms[room].cleanupTimer);
+      rooms[room].cleanupTimer = null;
+    }
+
     // Отправляем новому участнику текущее состояние комнаты
-    socket.emit('room-state', rooms[room]);
+    // (без служебных полей вроде cleanupTimer)
+    socket.emit('room-state', {
+      video: rooms[room].video,
+      currentTime: rooms[room].currentTime,
+      playing: rooms[room].playing,
+      reactions: rooms[room].reactions
+    });
 
     io.to(room).emit('chat-message', {
       system: true,
@@ -194,8 +256,14 @@ io.on('connection', (socket) => {
         system: true,
         text: `${socket.data.name || 'Гость'} вышел(ла)`
       });
+      // Считаем оставшихся уже после того, как этот сокет вышел из комнаты
+      // (socket.io делает это автоматически перед событием disconnect)
       const count = io.sockets.adapter.rooms.get(currentRoom)?.size || 0;
       io.to(currentRoom).emit('user-count', count);
+
+      if (count === 0) {
+        scheduleRoomCleanup(currentRoom);
+      }
     }
   });
 });
