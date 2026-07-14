@@ -145,7 +145,7 @@ io.on('connection', (socket) => {
     socket.data.name = name || 'Гость';
 
     if (!rooms[room]) {
-      rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {} };
+      rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null };
     }
 
     // Если комната была запланирована к удалению (опустела), отменяем удаление —
@@ -161,7 +161,8 @@ io.on('connection', (socket) => {
       video: rooms[room].video,
       currentTime: rooms[room].currentTime,
       playing: rooms[room].playing,
-      reactions: rooms[room].reactions
+      reactions: rooms[room].reactions,
+      streamLink: rooms[room].streamLink
     });
 
     io.to(room).emit('chat-message', {
@@ -177,7 +178,20 @@ io.on('connection', (socket) => {
     rooms[room].video = filename;
     rooms[room].currentTime = 0;
     rooms[room].playing = false;
+    rooms[room].streamLink = null;
     io.to(room).emit('video-selected', { filename });
+  });
+
+  // Ссылка на трансляцию с другого сайта. Настоящую синхронизацию play/pause
+  // тут не сделать (чужой плеер нам не подконтролен), но для прямого эфира
+  // это и не нужно — все просто открывают один и тот же линк одновременно.
+  socket.on('set-stream-link', ({ room, url }) => {
+    if (!rooms[room] || !url) return;
+    const trimmed = String(url).trim().slice(0, 2000);
+    if (!/^https?:\/\//i.test(trimmed)) return;
+    rooms[room].video = null;
+    rooms[room].streamLink = trimmed;
+    io.to(room).emit('stream-link-updated', { url: trimmed, from: socket.data.name || 'Гость' });
   });
 
   socket.on('play', ({ room, time }) => {
