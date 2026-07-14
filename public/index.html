@@ -409,7 +409,11 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 @media (max-width:899px){
   body.kb-open .stage-toolbar{ display:none; }
   body.kb-open .room-topbar{ display:none; }
-  body.kb-open .bottom-nav{ display:none; }
+  /* hidden on real input focus (see chat-focused listener below), not on
+     the kb-open height-guess, which can get stuck true when the mobile
+     browser's own toolbar collapses/expands and never quite returns to
+     the originally measured viewport height */
+  body.chat-focused .bottom-nav{ display:none; }
 }
 .room.theater-mode .video-wrap{ height:min(80vh, 720px); max-height:80vh; }
 .room.theater-mode .chat-section{ min-height:96px; }
@@ -936,6 +940,21 @@ window.addEventListener('orientationchange', () => setTimeout(() => {
   maxSeenHeight = 0;
   setAppHeight();
 }, 300));
+
+/* Nav bar hides on real chat-input focus, not on the kb-open guess —
+   this is the reliable signal for "the user is actively typing in chat". */
+document.addEventListener('DOMContentLoaded', () => {
+  const chatInput = document.getElementById('chatInput');
+  if (!chatInput) return;
+  chatInput.addEventListener('focus', () => {
+    document.body.classList.add('chat-focused');
+    requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
+  });
+  chatInput.addEventListener('blur', () => {
+    document.body.classList.remove('chat-focused');
+    requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
+  });
+});
 
 /* -----------------------------------------------------------
    Ripple micro-interaction
