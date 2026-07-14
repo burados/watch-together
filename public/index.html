@@ -468,9 +468,12 @@ select{
   position:relative;
 }
 .chat-messages{
-  display:flex !important; flex-direction:column; justify-content:flex-end;
+  display:flex; flex-direction:column; justify-content:flex-end;
   flex:1 1 0; min-height:0;
-  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  overflow-y:auto; overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y;
   padding:14px 14px 6px;
   gap:2px;
 }
@@ -518,27 +521,6 @@ select{
 }
 .typing-dots span:nth-child(2){ animation-delay:.15s; }
 .typing-dots span:nth-child(3){ animation-delay:.3s; }
-
-.scroll-btn-wrap{
-  flex-shrink:0;
-  display:flex; justify-content:center;
-  max-height:0; overflow:hidden;
-  transition:max-height .22s var(--ease);
-}
-.scroll-btn-wrap.show{ max-height:48px; }
-.scroll-bottom-btn{
-  display:flex; align-items:center; gap:6px;
-  margin:4px 0 6px;
-  padding:8px 14px; border-radius:var(--radius-full);
-  background:var(--surface-2); border:1px solid var(--border-strong);
-  color:var(--text); font-size:12px; font-weight:700;
-  box-shadow:var(--shadow-md);
-}
-.scroll-bottom-btn svg{ width:13px; height:13px; }
-.unread-badge{
-  background:var(--accent); color:#fff; font-size:10.5px; font-weight:800;
-  border-radius:99px; padding:1px 6px; min-width:16px; text-align:center;
-}
 
 .chat-input{
   flex-shrink:0; display:flex; align-items:center; gap:8px;
@@ -790,12 +772,6 @@ select{
           <div class="typing-dots"><span></span><span></span><span></span></div>
           <span id="typingText"></span>
         </div>
-        <div class="scroll-btn-wrap" id="scrollBottomWrap">
-          <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollChatToBottom(true)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-            <span id="scrollBottomText">Новые сообщения</span>
-          </button>
-        </div>
         <div class="chat-input">
           <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
@@ -882,7 +858,6 @@ select{
 let socket;
 let room, name;
 let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
-let unreadCount = 0;
 let typingTimeout = null;
 let lastTypingEmit = 0;
 let remoteTypingTimeout = null;
@@ -1338,25 +1313,7 @@ function isNearBottom(box, threshold = 60) {
 function scrollChatToBottom(smooth) {
   const box = document.getElementById('chatMessages');
   box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-  unreadCount = 0;
-  updateScrollBtn();
 }
-function updateScrollBtn() {
-  const wrap = document.getElementById('scrollBottomWrap');
-  if (unreadCount > 0) {
-    wrap.classList.add('show');
-    document.getElementById('scrollBottomText').textContent =
-      unreadCount + (unreadCount === 1 ? ' новое сообщение' : ' новых сообщения');
-  } else {
-    wrap.classList.remove('show');
-  }
-}
-document.addEventListener('DOMContentLoaded', () => {
-  const box = document.getElementById('chatMessages');
-  if (box) box.addEventListener('scroll', () => {
-    if (isNearBottom(box, 40)) { unreadCount = 0; updateScrollBtn(); }
-  });
-});
 
 function addChatMessage(msg) {
   const box = document.getElementById('chatMessages');
@@ -1405,11 +1362,6 @@ function addChatMessage(msg) {
     row.appendChild(avatar);
     row.appendChild(bodyEl);
     box.appendChild(row);
-
-    if (!wasNearBottom && !isOwn) {
-      unreadCount++;
-      updateScrollBtn();
-    }
   }
 
   if (wasNearBottom) box.scrollTop = box.scrollHeight;
@@ -1506,8 +1458,6 @@ function leaveRoom() {
 
   document.getElementById('chatMessages').innerHTML = '';
   hideTyping();
-  unreadCount = 0;
-  updateScrollBtn();
 
   document.getElementById('room').style.display = 'none';
   document.getElementById('gate').style.display = 'flex';
