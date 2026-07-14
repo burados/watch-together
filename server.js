@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const { Server } = require('socket.io');
+const { randomUUID } = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -95,7 +96,7 @@ io.on('connection', (socket) => {
     socket.data.name = name || 'Гость';
 
     if (!rooms[room]) {
-      rooms[room] = { video: null, currentTime: 0, playing: false };
+      rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {} };
     }
 
     // Отправляем новому участнику текущее состояние комнаты
@@ -148,16 +149,43 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat-message', ({ room, text }) => {
+    if (!room || !text) return;
+    if (!rooms[room]) rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {} };
+    const id = randomUUID();
+    rooms[room].reactions[id] = {};
+
     io.to(room).emit('chat-message', {
+      id,
       system: false,
       name: socket.data.name,
       text
     });
   });
 
-  socket.on('reaction', ({ room, emoji }) => {
-    if (!room || !emoji) return;
-    io.to(room).emit('reaction', { emoji, name: socket.data.name || 'Гость' });
+  // Реакция на конкретное сообщение чата (одна реакция на пользователя за сообщение)
+  socket.on('message-reaction', ({ room, messageId, emoji }) => {
+    if (!room || !messageId || !emoji || !rooms[room]) return;
+    const user = socket.data.name || 'Гость';
+    if (!rooms[room].reactions) rooms[room].reactions = {};
+    if (!rooms[room].reactions[messageId]) rooms[room].reactions[messageId] = {};
+    const msgReactions = rooms[room].reactions[messageId];
+
+    let hadSameReaction = false;
+    Object.keys(msgReactions).forEach((em) => {
+      const idx = msgReactions[em].indexOf(user);
+      if (idx !== -1) {
+        msgReactions[em].splice(idx, 1);
+        if (em === emoji) hadSameReaction = true;
+        if (!msgReactions[em].length) delete msgReactions[em];
+      }
+    });
+
+    if (!hadSameReaction) {
+      if (!msgReactions[emoji]) msgReactions[emoji] = [];
+      msgReactions[emoji].push(user);
+    }
+
+    io.to(room).emit('message-reaction-update', { messageId, reactions: msgReactions });
   });
 
   socket.on('disconnect', () => {
