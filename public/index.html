@@ -406,6 +406,20 @@ body.in-room, body.in-room html{ overflow:hidden; }
   border:0; cursor:pointer; font-size:12px; padding:5px 9px; border-radius:8px;
   background:var(--primary); color:#fff; font-weight:600;
 }
+.stream-frame-bar-close{
+  border:0; cursor:pointer; width:22px; height:22px; border-radius:7px;
+  background:rgba(255,255,255,.14) !important; color:#fff; font-weight:400 !important;
+  display:flex; align-items:center; justify-content:center; padding:0 !important; font-size:15px !important;
+  flex-shrink:0;
+}
+.stream-frame-peek{
+  position:absolute; top:10px; right:10px; z-index:3; display:none;
+  width:30px; height:30px; border-radius:9px; border:0; cursor:pointer;
+  background:rgba(0,0,0,.5); backdrop-filter:blur(6px); color:#fff;
+  align-items:center; justify-content:center;
+}
+.stream-frame-peek.show{ display:flex; }
+.stream-frame-peek svg{ width:15px; height:15px; }
 .video-wrap{
   position:relative;
   width:100%;
@@ -424,7 +438,8 @@ body.in-room, body.in-room html{ overflow:hidden; }
 .video-wrap:fullscreen .stream-frame{
   width:100vw; height:100vh;
 }
-.video-wrap:fullscreen .stream-frame-bar{ display:none !important; }
+.video-wrap:fullscreen .stream-frame-bar,
+.video-wrap:fullscreen .stream-frame-peek{ display:none !important; }
 .expand-btn{
   position:absolute; top:10px; left:10px; z-index:3;
   width:34px; height:34px; border-radius:9px; border:0; cursor:pointer;
@@ -958,7 +973,11 @@ select{
           <div class="stream-frame-bar" id="streamFrameBar" style="display:none;">
             <span id="streamFrameFrom"></span>
             <button type="button" onclick="openStreamLink()">Открыть в новой вкладке ↗</button>
+            <button type="button" class="stream-frame-bar-close" onclick="hideStreamFrameBar()" aria-label="Скрыть панель">✕</button>
           </div>
+          <button type="button" class="stream-frame-peek" id="streamFramePeek" onclick="showStreamFrameBar()" aria-label="Показать панель трансляции">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
+          </button>
           <div class="video-loading" id="videoLoading"><div class="spinner"></div></div>
           <video id="player" controls playsinline style="display:none;"></video>
         </div>
@@ -1464,6 +1483,7 @@ function showStreamLink(url, from, notify) {
   const bar = document.getElementById('streamFrameBar');
   bar.style.display = 'flex';
   document.getElementById('streamFrameFrom').textContent = from ? ('Добавил(а): ' + from) : '';
+  document.getElementById('streamFramePeek').classList.remove('show');
 
   document.getElementById('expandBtn').style.display = 'flex';
 
@@ -1502,11 +1522,22 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
+function hideStreamFrameBar() {
+  document.getElementById('streamFrameBar').style.display = 'none';
+  document.getElementById('streamFramePeek').classList.add('show');
+}
+
+function showStreamFrameBar() {
+  document.getElementById('streamFrameBar').style.display = 'flex';
+  document.getElementById('streamFramePeek').classList.remove('show');
+}
+
 function hideStreamFrame() {
   const frame = document.getElementById('streamFrame');
   frame.src = 'about:blank';
   frame.style.display = 'none';
   document.getElementById('streamFrameBar').style.display = 'none';
+  document.getElementById('streamFramePeek').classList.remove('show');
 }
 
 function showVideo(filename, notify) {
