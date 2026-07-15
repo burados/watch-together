@@ -303,7 +303,7 @@ io.on('connection', (socket) => {
     socket.to(room).emit('user-stop-typing', {});
   });
 
-  socket.on('chat-message', ({ room, text, image }) => {
+  socket.on('chat-message', ({ room, text, image, replyTo }) => {
     if (!room) return;
     const trimmedText = (text || '').toString().trim().slice(0, 4000);
     // Картинка обязана быть именем файла, реально загруженным через /upload-image —
@@ -312,6 +312,20 @@ io.on('connection', (socket) => {
       ? image
       : null;
     if (!trimmedText && !safeImage) return; // пустое сообщение без текста и картинки — игнорируем
+
+    // "Ответ на сообщение" — сервер не хранит историю чата, поэтому просто
+    // ретранслирует то, что прислал клиент (у него это сообщение уже есть на
+    // экране), с обрезкой длины на всякий случай
+    let safeReplyTo = null;
+    if (replyTo && typeof replyTo === 'object') {
+      const replyId = String(replyTo.id || '').slice(0, 100);
+      const replyName = String(replyTo.name || 'Гость').slice(0, 100);
+      const replyText = String(replyTo.text || '').slice(0, 300);
+      const replyImage = !!replyTo.image;
+      if (replyId && (replyText || replyImage)) {
+        safeReplyTo = { id: replyId, name: replyName, text: replyText, image: replyImage };
+      }
+    }
 
     if (!rooms[room]) rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null };
     const id = randomUUID();
@@ -322,7 +336,8 @@ io.on('connection', (socket) => {
       system: false,
       name: socket.data.name,
       text: trimmedText,
-      image: safeImage
+      image: safeImage,
+      replyTo: safeReplyTo
     });
   });
 
