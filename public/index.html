@@ -655,18 +655,33 @@ select{
 }
 
 .msg-row{
-  display:flex; align-items:flex-start; gap:10px;
-  padding:7px 8px; border-radius:var(--radius-sm);
+  display:flex; align-items:flex-end; gap:8px;
+  padding:2px 8px; border-radius:var(--radius-sm);
   animation:msg-in .22s var(--ease);
+  align-self:flex-start; width:fit-content; max-width:86%;
+  position:relative;
 }
-.msg-row.own{ background:linear-gradient(90deg, var(--primary-soft), transparent 85%); }
+.msg-row.own{ align-self:flex-end; flex-direction:row-reverse; }
 .msg-avatar{
   flex-shrink:0; width:32px; height:32px; border-radius:11px;
   display:flex; align-items:center; justify-content:center;
   font-family:var(--font-display); font-size:12.5px; font-weight:800;
-  color:rgba(0,0,0,.6); margin-top:1px;
+  color:rgba(0,0,0,.6); margin-bottom:1px;
 }
-.msg-body{ flex:1; min-width:0; }
+.msg-body{
+  min-width:0; position:relative;
+  background:var(--surface);
+  border:1px solid var(--border-soft);
+  padding:7px 10px 6px;
+  border-radius:15px;
+  border-bottom-left-radius:4px;
+}
+.msg-row.own .msg-body{
+  background:var(--primary-soft);
+  border-color:transparent;
+  border-bottom-left-radius:15px;
+  border-bottom-right-radius:4px;
+}
 .msg-name{
   font-size:12.5px; font-weight:700; color:var(--accent);
   margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -675,6 +690,21 @@ select{
 .msg-line{ display:flex; align-items:baseline; gap:8px; }
 .msg-text{ flex:1; min-width:0; font-size:13.5px; line-height:1.45; color:var(--text); word-break:break-word; white-space:pre-wrap; }
 .msg-time{ flex-shrink:0; font-size:10.5px; color:var(--text-faint); white-space:nowrap; }
+
+/* Двойной тап — быстрая реакция сердечком */
+.msg-heart-burst{
+  position:absolute; top:50%; left:50%; z-index:15;
+  transform:translate(-50%,-50%) scale(0);
+  font-size:52px; pointer-events:none;
+  filter:drop-shadow(0 4px 14px rgba(0,0,0,.35));
+  animation:heart-burst .7s var(--ease-spring) forwards;
+}
+@keyframes heart-burst{
+  0%{ transform:translate(-50%,-50%) scale(0); opacity:0; }
+  25%{ transform:translate(-50%,-50%) scale(1.15); opacity:1; }
+  45%{ transform:translate(-50%,-50%) scale(.95); opacity:1; }
+  100%{ transform:translate(-50%,-58%) scale(1.05); opacity:0; }
+}
 
 .msg.system{
   align-self:center; text-align:center; color:var(--text-faint);
@@ -1257,6 +1287,13 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', setAppHeight);
 }
 window.addEventListener('resize', setAppHeight);
+if (screen.orientation && screen.orientation.lock) {
+  screen.orientation.lock('portrait').catch(() => {
+    // Блокировка не поддерживается вне fullscreen/PWA — это нормально,
+    // основная защита обеспечивается через manifest.json (orientation: portrait)
+  });
+}
+
 window.addEventListener('orientationchange', () => setTimeout(() => {
   maxSeenHeight = 0;
   setAppHeight();
@@ -2136,6 +2173,15 @@ function addChatMessage(msg) {
       bodyEl.appendChild(img);
     }
 
+    if (msg.id) {
+      bodyEl.addEventListener('dblclick', (ev) => {
+        ev.preventDefault();
+        window.getSelection && window.getSelection().removeAllRanges();
+        sendMessageReaction(msg.id, '❤️');
+        triggerHeartBurst(bodyEl);
+      });
+    }
+
     row.appendChild(avatar);
     row.appendChild(bodyEl);
     inner.appendChild(row);
@@ -2346,6 +2392,16 @@ function toggleMessageReactionPicker(messageId, btnEl) {
 function sendMessageReaction(messageId, emoji) {
   if (!socket || !messageId) return;
   socket.emit('message-reaction', { room, messageId, emoji });
+}
+
+function triggerHeartBurst(bodyEl) {
+  const old = bodyEl.querySelector('.msg-heart-burst');
+  if (old) old.remove();
+  const heart = document.createElement('div');
+  heart.className = 'msg-heart-burst';
+  heart.textContent = '❤️';
+  bodyEl.appendChild(heart);
+  heart.addEventListener('animationend', () => heart.remove());
 }
 
 function renderMessageReactions(row, reactions) {
