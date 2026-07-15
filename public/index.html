@@ -1716,7 +1716,7 @@ function showVideo(filename, notify) {
   const player = document.getElementById('player');
   document.getElementById('noVideo').style.display = 'none';
   player.style.display = 'block';
-  player.src = '/video/' + filename;
+  player.src = '/video/' + encodeURIComponent(filename) + '?room=' + encodeURIComponent(room);
 
   wirePlayerCommon(player);
 
@@ -1765,6 +1765,7 @@ async function handleUpload(event) {
 
   const formData = new FormData();
   formData.append('video', file);
+  formData.append('room', room);
 
   const progress = document.getElementById('uploadProgress');
   progress.textContent = 'Загрузка 0%';
@@ -1812,7 +1813,7 @@ async function handleUpload(event) {
 async function loadVideoList() {
   const select = document.getElementById('videoSelect');
   try {
-    const res = await fetch('/videos');
+    const res = await fetch('/videos?room=' + encodeURIComponent(room));
     if (!res.ok) throw new Error('status ' + res.status);
     const files = await res.json();
     select.innerHTML = '<option value="">— выбрать уже загруженное —</option>';
