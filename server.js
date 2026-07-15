@@ -3,12 +3,103 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const helmet = require('helmet');
+const cors = require('cors');
 const { Server } = require('socket.io');
 const { randomUUID } = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+// --- CORS: список разрешённых источников ---
+//
+// Задаётся через переменную окружения ALLOWED_ORIGINS (через запятую), например:
+//   ALLOWED_ORIGINS=https://watch.example.com,https://app.watch.example.com
+//
+// Это понадобится не только браузеру: когда приложение будет упаковано под
+// Android (TWA/Capacitor), запросы к серверу будут приходить с другого origin
+// (например, https://localhost или digital-asset-links домен), и без явного
+// разрешения браузер/WebView будет блокировать такие запросы.
+//
+// Если переменная не задана — считаем, что мы в разработке, и разрешаем всё,
+// но громко предупреждаем в консоли, чтобы это не забыли настроить в проде.
+const allowedOriginsEnv = (process.env.ALLOWED_ORIGINS || '').trim();
+const allowedOrigins = allowedOriginsEnv
+  ? allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean)
+  : null;
+
+if (!allowedOrigins) {
+  console.warn(
+    '[CORS] Переменная ALLOWED_ORIGINS не задана — разрешены запросы с любого источника. ' +
+    'Перед публикацией задайте ALLOWED_ORIGINS (например, ALLOWED_ORIGINS=https://your-domain.com).'
+  );
+}
+
+function isOriginAllowed(origin) {
+  // origin === undefined — запрос без заголовка Origin (curl, серверные вызовы,
+  // некоторые мобильные WebView) — пропускаем, т.к. тут нет браузерной CORS-угрозы.
+  if (!origin) return true;
+  if (!allowedOrigins) return true; // список не настроен — разработка
+  return allowedOrigins.includes(origin);
+}
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (isOriginAllowed(origin)) callback(null, true);
+    else callback(new Error(`CORS: источник "${origin}" не разрешён`));
+  },
+  methods: ['GET', 'POST'],
+  credentials: false
+};
+
+const io = new Server(server, {
+  cors: {
+    origin(origin, callback) {
+      if (isOriginAllowed(origin)) callback(null, true);
+      else callback(new Error(`CORS: источник "${origin}" не разрешён`));
+    },
+    methods: ['GET', 'POST'],
+    credentials: false
+  }
+});
+
+// --- Безопасность: базовые HTTP-заголовки (Helmet) + Content-Security-Policy ---
+//
+// CSP настроен под реальные нужды приложения:
+//  - шрифты Google Fonts (fonts.googleapis.com / fonts.gstatic.com);
+//  - hls.js с cdn.jsdelivr.net (для проигрывания .m3u8-трансляций);
+//  - произвольные внешние https-ссылки на видео/трансляции — их вставляет сам
+//    пользователь комнаты (функции "внешнее видео" / "ссылка на трансляцию"),
+//    поэтому media-src и connect-src не могут быть ограничены одним доменом.
+//
+// crossOriginEmbedderPolicy отключён намеренно: включённый COEP потребовал бы
+// CORP-заголовков от ЛЮБОГО стороннего видео/трансляции, которую вставит
+// пользователь, а мы такими серверами не управляем — с COEP большая часть
+// внешних ссылок на видео просто перестала бы загружаться.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        // 'unsafe-inline' для script/style пока обязателен — фронтенд сейчас
+        // единым файлом с инлайн-<script>/<style> и инлайн-обработчиками;
+        // это будет ужесточено (nonce/hash) на этапе рефакторинга фронтенда.
+        scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        mediaSrc: ["'self'", 'blob:', 'https:'],
+        connectSrc: ["'self'", 'https:', 'wss:', 'ws:'],
+        workerSrc: ["'self'", 'blob:'],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"]
+      }
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+  })
+);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const CHAT_IMAGE_DIR = path.join(__dirname, 'uploads', 'chat-images');
@@ -52,6 +143,8 @@ const uploadChatImage = multer({
     cb(null, true);
   }
 });
+
+app.use(cors(corsOptions));
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
@@ -383,6 +476,18 @@ io.on('connection', (socket) => {
       }
     }
   });
+});
+
+// --- Единый обработчик ошибок Express ---
+// Ловит в том числе ошибки CORS (origin не в allowedOrigins) и отдаёт чистый
+// JSON-ответ вместо стектрейса Node в теле ответа.
+app.use((err, req, res, next) => {
+  if (err && /^CORS:/.test(err.message || '')) {
+    console.warn(`[CORS] Отклонён запрос: ${err.message}`);
+    return res.status(403).json({ error: 'Источник запроса не разрешён (CORS)' });
+  }
+  console.error('Необработанная ошибка запроса:', err);
+  res.status(500).json({ error: 'Внутренняя ошибка сервера' });
 });
 
 const PORT = process.env.PORT || 3000;
