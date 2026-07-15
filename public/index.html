@@ -440,6 +440,23 @@ body.in-room, body.in-room html{ overflow:hidden; }
 }
 .video-wrap:fullscreen .stream-frame-bar,
 .video-wrap:fullscreen .stream-frame-peek{ display:none !important; }
+
+/* Фолбэк на случай, когда браузер не поддерживает Fullscreen API для
+   произвольных блоков (это касается Safari на iPhone/iPad — там нативный
+   requestFullscreen работает только для <video>, а не для div/iframe) */
+.video-wrap.fake-fullscreen{
+  position:fixed; inset:0; z-index:600;
+  width:100vw; height:100vh; max-height:100vh;
+  aspect-ratio:auto; border-radius:0;
+}
+.video-wrap.fake-fullscreen video,
+.video-wrap.fake-fullscreen .stream-frame{
+  width:100vw; height:100vh;
+}
+.video-wrap.fake-fullscreen .stream-frame-bar,
+.video-wrap.fake-fullscreen .stream-frame-peek{ display:none !important; }
+body.video-fake-fullscreen{ overflow:hidden; }
+body.video-fake-fullscreen .bottom-nav{ display:none; }
 .expand-btn{
   position:absolute; top:10px; left:10px; z-index:3;
   width:34px; height:34px; border-radius:9px; border:0; cursor:pointer;
@@ -995,7 +1012,7 @@ select{
           </div>
           <button type="button" class="upload-pill ripple-host" onclick="promptStreamLink()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
-            Ссылка на трансляцию
+            Ссылка на видео
           </button>
           <span id="uploadProgress"></span>
         </div>
@@ -1121,6 +1138,7 @@ select{
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 <script>
 let socket;
 let room, name;
@@ -1395,6 +1413,9 @@ function setupSocket() {
     if (state.video) {
       showVideo(state.video, false);
       player.currentTime = state.currentTime || 0;
+    } else if (state.externalVideo) {
+      showExternalVideo(state.externalVideo, null, false);
+      player.currentTime = state.currentTime || 0;
     } else if (state.streamLink) {
       showStreamLink(state.streamLink, null, false);
     }
@@ -1402,6 +1423,10 @@ function setupSocket() {
 
   socket.on('video-selected', ({ filename }) => {
     showVideo(filename, false);
+  });
+
+  socket.on('external-video-selected', ({ url, from }) => {
+    showExternalVideo(url, from, false);
   });
 
   socket.on('stream-link-updated', ({ url, from }) => {
@@ -1456,19 +1481,46 @@ function setupSocket() {
    Video
    ----------------------------------------------------------- */
 let currentStreamLink = null;
+let currentExternalVideo = null;
+let hlsInstance = null;
+
+// Прямая ссылка на файл (.mp4 и т.п.) или на HLS-плейлист (.m3u8) можно
+// загрузить прямо в наш <video> — тогда play/pause/перемотка синхронизируются
+// у всех по-настоящему. Ссылка на страницу сайта (ютуб, твич, обычный сайт)
+// так не грузится — её можно только встроить как iframe, без синхронизации.
+function detectVideoUrlType(url) {
+  const clean = url.split('?')[0].split('#')[0];
+  if (/\.m3u8$/i.test(clean)) return 'hls';
+  if (/\.(mp4|webm|ogv|ogg|mov|m4v)$/i.test(clean)) return 'direct';
+  return 'embed';
+}
 
 function promptStreamLink() {
-  const url = window.prompt('Вставьте ссылку на трансляцию (YouTube, Twitch, официальный сайт и т.п.):', currentStreamLink || 'https://');
+  const url = window.prompt(
+    'Вставьте ссылку на видео:\n\n' +
+    '• прямая ссылка на файл (.mp4, .m3u8) — будет полная синхронизация play/pause у всех\n' +
+    '• ссылка на страницу сайта (YouTube, Twitch и т.п.) — просто встроится, без синхронизации',
+    currentExternalVideo || currentStreamLink || 'https://'
+  );
   if (!url) return;
   const trimmed = url.trim();
   if (!/^https?:\/\//i.test(trimmed)) { showToast('Ссылка должна начинаться с http:// или https://'); return; }
-  socket.emit('set-stream-link', { room, url: trimmed });
+
+  const type = detectVideoUrlType(trimmed);
+  if (type === 'embed') {
+    socket.emit('set-stream-link', { room, url: trimmed });
+  } else {
+    socket.emit('set-external-video', { room, url: trimmed });
+  }
 }
 
 function showStreamLink(url, from, notify) {
   currentStreamLink = url;
+  currentExternalVideo = null;
+  destroyHlsInstance();
   const player = document.getElementById('player');
   player.pause();
+  player.removeAttribute('src');
   player.style.display = 'none';
   document.getElementById('videoLoading').classList.remove('show');
   document.getElementById('noVideo').style.display = 'none';
@@ -1499,27 +1551,72 @@ function openStreamLink() {
 
 function toggleFullscreen() {
   const wrap = document.getElementById('videoWrap');
-  if (!document.fullscreenElement) {
-    (wrap.requestFullscreen || wrap.webkitRequestFullscreen)?.call(wrap);
-  } else {
+  const requestFn = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+
+  // На iPhone/iPad Safari метод requestFullscreen() для произвольного div/iframe
+  // либо отсутствует, либо есть, но по факту ничего не делает (там fullscreen
+  // поддерживается нативно только для <video>). Поэтому не доверяем одному
+  // только наличию метода — подстраховываемся таймером ниже.
+  if (typeof requestFn !== 'function') {
+    toggleFakeFullscreen();
+    return;
+  }
+
+  if (!document.fullscreenElement && !wrap.classList.contains('fake-fullscreen')) {
+    const result = requestFn.call(wrap);
+    if (result && typeof result.catch === 'function') result.catch(() => toggleFakeFullscreen());
+    setTimeout(() => {
+      if (!document.fullscreenElement && !wrap.classList.contains('fake-fullscreen')) toggleFakeFullscreen();
+    }, 400);
+  } else if (document.fullscreenElement) {
     (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
+  } else {
+    exitFakeFullscreen();
   }
 }
 
-document.addEventListener('fullscreenchange', () => {
+function updateExpandButton(isFull) {
   const btn = document.getElementById('expandBtn');
   const collapseIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3v4a2 2 0 01-2 2H3m18 0h-4a2 2 0 01-2-2V3M3 15h4a2 2 0 012 2v4m6-6h4a2 2 0 002-2v4"/></svg>';
   const expandIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>';
-  btn.innerHTML = document.fullscreenElement ? collapseIcon : expandIcon;
-  btn.title = document.fullscreenElement ? 'Свернуть видео' : 'Развернуть видео';
+  btn.innerHTML = isFull ? collapseIcon : expandIcon;
+  btn.title = isFull ? 'Свернуть видео' : 'Развернуть видео';
+}
 
+function setStreamBarHiddenForFullscreen(hide) {
   const bar = document.getElementById('streamFrameBar');
-  if (document.fullscreenElement) {
+  if (hide) {
     bar.dataset.wasVisible = bar.style.display === 'flex' ? '1' : '0';
     bar.style.display = 'none';
   } else if (bar.dataset.wasVisible === '1') {
     bar.style.display = 'flex';
   }
+}
+
+function toggleFakeFullscreen() {
+  const wrap = document.getElementById('videoWrap');
+  const active = wrap.classList.toggle('fake-fullscreen');
+  document.body.classList.toggle('video-fake-fullscreen', active);
+  updateExpandButton(active);
+  setStreamBarHiddenForFullscreen(active);
+}
+
+function exitFakeFullscreen() {
+  const wrap = document.getElementById('videoWrap');
+  if (!wrap.classList.contains('fake-fullscreen')) return;
+  wrap.classList.remove('fake-fullscreen');
+  document.body.classList.remove('video-fake-fullscreen');
+  updateExpandButton(false);
+  setStreamBarHiddenForFullscreen(false);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') exitFakeFullscreen();
+});
+
+document.addEventListener('fullscreenchange', () => {
+  updateExpandButton(!!document.fullscreenElement);
+  setStreamBarHiddenForFullscreen(!!document.fullscreenElement);
 });
 
 function hideStreamFrameBar() {
@@ -1540,15 +1637,17 @@ function hideStreamFrame() {
   document.getElementById('streamFramePeek').classList.remove('show');
 }
 
-function showVideo(filename, notify) {
-  currentStreamLink = null;
-  document.getElementById('streamLinkCard').style.display = 'none';
-  hideStreamFrame();
-  const player = document.getElementById('player');
-  document.getElementById('noVideo').style.display = 'none';
-  player.style.display = 'block';
-  player.src = '/video/' + filename;
+function destroyHlsInstance() {
+  if (hlsInstance) {
+    hlsInstance.destroy();
+    hlsInstance = null;
+  }
+}
 
+// Общая проводка событий плеера (лоадер, соотношение сторон, синхронизация
+// play/pause/перемотки) — одна и та же что для своих загруженных видео,
+// что для видео по прямой внешней ссылке.
+function wirePlayerCommon(player) {
   document.getElementById('expandBtn').style.display = 'flex';
 
   // reset to a sane default until we know the real dimensions, then match
@@ -1570,8 +1669,58 @@ function showVideo(filename, notify) {
   player.onplay = () => { if (!syncing) socket.emit('play', { room, time: player.currentTime }); };
   player.onpause = () => { if (!syncing) socket.emit('pause', { room, time: player.currentTime }); };
   player.onseeked = () => { if (!syncing) socket.emit('seek', { room, time: player.currentTime }); };
+}
+
+function showVideo(filename, notify) {
+  currentStreamLink = null;
+  currentExternalVideo = null;
+  destroyHlsInstance();
+  document.getElementById('streamLinkCard').style.display = 'none';
+  hideStreamFrame();
+  const player = document.getElementById('player');
+  document.getElementById('noVideo').style.display = 'none';
+  player.style.display = 'block';
+  player.src = '/video/' + filename;
+
+  wirePlayerCommon(player);
 
   if (notify) socket.emit('select-video', { room, filename });
+}
+
+// Видео по прямой ссылке на файл (.mp4/.webm) или HLS-плейлист (.m3u8) с
+// внешнего сервера — грузим прямо в свой <video>, поэтому play/pause/
+// перемотка синхронизируются между всеми зрителями по-настоящему, как и
+// с обычным загруженным файлом.
+function showExternalVideo(url, from, notify) {
+  currentStreamLink = null;
+  currentExternalVideo = url;
+  destroyHlsInstance();
+  document.getElementById('streamLinkCard').style.display = 'none';
+  hideStreamFrame();
+
+  const player = document.getElementById('player');
+  document.getElementById('noVideo').style.display = 'none';
+  player.style.display = 'block';
+
+  const type = detectVideoUrlType(url);
+  if (type === 'hls' && !player.canPlayType('application/vnd.apple.mpegurl') && window.Hls && Hls.isSupported()) {
+    hlsInstance = new Hls();
+    hlsInstance.loadSource(url);
+    hlsInstance.attachMedia(player);
+    hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+      if (data.fatal) {
+        console.error('Ошибка HLS-потока:', data);
+        showToast('Не удалось загрузить видео по этой ссылке');
+      }
+    });
+  } else {
+    // Safari умеет .m3u8 нативно; обычные .mp4/.webm тоже просто через src
+    player.src = url;
+  }
+
+  wirePlayerCommon(player);
+
+  if (notify) socket.emit('set-external-video', { room, url });
 }
 
 async function handleUpload(event) {
@@ -2152,7 +2301,10 @@ function leaveRoom() {
   hideStreamFrame();
   document.getElementById('expandBtn').style.display = 'none';
   if (document.fullscreenElement) document.exitFullscreen?.();
+  exitFakeFullscreen();
   currentStreamLink = null;
+  currentExternalVideo = null;
+  destroyHlsInstance();
   document.getElementById('videoLoading').classList.remove('show');
   document.getElementById('videoSelect').innerHTML = '<option value="">— выбрать уже загруженное —</option>';
   document.getElementById('uploadProgress').textContent = '';
