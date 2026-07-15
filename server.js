@@ -115,6 +115,41 @@ if (!fs.existsSync(CHAT_IMAGE_DIR)) {
   fs.mkdirSync(CHAT_IMAGE_DIR, { recursive: true });
 }
 
+// --- Привязка доступа к видеофайлу к комнате (устранение IDOR) ---
+//
+// До этого момента /video/:filename отдавал ЛЮБОЙ файл из uploads по одному
+// только имени — без проверки, что запрашивающий вообще имеет отношение к
+// комнате, в которую это видео когда-то загрузили. Имена файлов строятся как
+// `${Date.now()}-${originalname}` (см. multer.diskStorage выше) — то есть
+// предсказуемы и легко перебираются/угадываются. То же самое с /videos:
+// эндпоинт возвращал список ВСЕХ когда-либо загруженных файлов на сервере,
+// независимо от комнаты, — по сути каталог чужого приватного контента.
+// Итог — классический IDOR: обладание корректным именем файла (просто числом
+// и оригинальным именем) давало доступ к видео другой, ничем не защищённой
+// комнаты.
+//
+// Фикс: у каждого загруженного файла теперь есть комната-владелец, и:
+//  - /video/:filename требует query-параметр room и отдаёт файл только если
+//    он был загружен именно в эту комнату;
+//  - /videos возвращает только файлы, привязанные к запрошенной комнате;
+//  - select-video на сокете принимает выбор файла, только если он
+//    действительно принадлежит комнате, в которой его выбирают — иначе
+//    участник одной комнаты не может подставить (подобрав имя файла) видео
+//    из чужой комнаты как видео своей.
+//
+// Хранится в памяти (Map), как и вся остальная информация о комнатах —
+// осознанный компромисс, согласованный с уже существующим поведением
+// приложения (rooms/cleanupTimer тоже не переживают перезапуск сервера).
+const videoRoomOwner = new Map(); // filename -> room
+
+function registerVideoOwnership(filename, room) {
+  if (filename && room) videoRoomOwner.set(filename, room);
+}
+
+function isVideoOwnedByRoom(filename, room) {
+  return !!filename && !!room && videoRoomOwner.get(filename) === room;
+}
+
 // --- Ограничение MIME-типов при загрузке видео ---
 //
 // До этого момента /upload принимал файл любого типа: filename() только
@@ -154,6 +189,77 @@ function isAllowedVideoFile(file) {
   return ALLOWED_VIDEO_MIME_TYPES.has(mimetype) && ALLOWED_VIDEO_EXTENSIONS.has(ext);
 }
 
+// --- Квота на диск / общий лимит хранилища uploads ---
+//
+// До этого момента диск ничем не был ограничен, кроме лимита размера ОДНОГО
+// файла (fileSize у multer). Это не защищает от переполнения диска: можно
+// было заливать видео за видео (или картинки в чат), пока место физически не
+// кончится, — а сервер (логи, БД состояния и т.п.) находится на том же диске
+// и падает вместе с ним.
+//
+// Считаем СУММАРНЫЙ размер каталога uploads (видео + uploads/chat-images,
+// т.к. это подпапка) и не даём превысить UPLOAD_QUOTA_BYTES:
+//  - до записи файла — оцениваем итоговый размер по Content-Length запроса
+//    (доступен уже в fileFilter, до того как multer дописал файл на диск) —
+//    это не даёт начать заведомо обречённую запись огромного файла;
+//  - после записи — на случай гонки (несколько параллельных загрузок прошли
+//    pre-check одновременно, суммарно превысив квоту) — если по факту квота
+//    превышена, только что записанный файл удаляется, и клиенту возвращается
+//    ошибка, а не тихо оставленный на диске файл сверх лимита.
+//
+// Задаётся в гигабайтах через UPLOAD_QUOTA_GB (по умолчанию 50 ГБ) — под
+// реальный размер диска конкретного деплоя.
+const UPLOAD_QUOTA_BYTES = (parseFloat(process.env.UPLOAD_QUOTA_GB) || 50) * 1024 * 1024 * 1024;
+
+// Рекурсивно считает суммарный размер файлов в директории (в байтах).
+// Достаточно дёшево (только stat, без чтения содержимого) для разумного
+// количества файлов, характерного для самостоятельно хостящегося приложения.
+function getDirectorySizeBytes(dir) {
+  let total = 0;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    return total;
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += getDirectorySizeBytes(fullPath);
+    } else if (entry.isFile()) {
+      try {
+        total += fs.statSync(fullPath).size;
+      } catch (err) {
+        // Файл мог исчезнуть между readdir и stat (например, автоочистка) — пропускаем
+      }
+    }
+  }
+  return total;
+}
+
+// Предварительная проверка в fileFilter: используем Content-Length запроса
+// как консервативную (чуть завышенную из-за multipart-обвязки) оценку
+// размера входящего файла, т.к. реальный размер файла на этом этапе ещё
+// неизвестен — тело запроса ещё не дочитано.
+function isQuotaExceededForIncomingRequest(req) {
+  const contentLength = parseInt(req.headers['content-length'], 10) || 0;
+  const currentUsage = getDirectorySizeBytes(UPLOAD_DIR);
+  return currentUsage + contentLength > UPLOAD_QUOTA_BYTES;
+}
+
+// Пост-проверка после того, как multer уже записал файл на диск: если общая
+// занятость всё же превысила квоту (гонка параллельных загрузок), удаляем
+// только что сохранённый файл и возвращаем ошибку клиенту.
+function enforceQuotaAfterUpload(filePath) {
+  if (getDirectorySizeBytes(UPLOAD_DIR) > UPLOAD_QUOTA_BYTES) {
+    fs.unlink(filePath, (err) => {
+      if (err) console.error('Не удалось удалить файл после превышения квоты:', err.message);
+    });
+    return true;
+  }
+  return false;
+}
+
 // --- Настройка загрузки файлов ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -170,6 +276,9 @@ const upload = multer({
       return cb(new Error(
         'Недопустимый формат видео. Разрешены: MP4, WebM, OGG, MOV, MKV, AVI, WMV, 3GP, TS'
       ));
+    }
+    if (isQuotaExceededForIncomingRequest(req)) {
+      return cb(new Error('Общий лимит хранилища для загрузок исчерпан. Освободите место и попробуйте снова.'));
     }
     cb(null, true);
   }
@@ -188,6 +297,9 @@ const uploadChatImage = multer({
   limits: { fileSize: 15 * 1024 * 1024 }, // до 15 МБ на картинку
   fileFilter: (req, file, cb) => {
     if (!/^image\//.test(file.mimetype)) return cb(new Error('Разрешены только изображения'));
+    if (isQuotaExceededForIncomingRequest(req)) {
+      return cb(new Error('Общий лимит хранилища для загрузок исчерпан. Освободите место и попробуйте снова.'));
+    }
     cb(null, true);
   }
 });
@@ -231,6 +343,12 @@ const uploadImageLimiter = rateLimit({
 });
 
 // Загрузка видео
+//
+// Комната передаётся клиентом как обычное текстовое поле формы (room) —
+// multer кладёт его в req.body ещё до вызова fileFilter/обработчика ниже.
+// Без валидной комнаты файл не сохраняем: иначе он останется ничьим и либо
+// будет недоступен всем (после фикса IDOR), либо (без привязки) — доступен
+// всем, что и есть исходная уязвимость.
 app.post('/upload', uploadLimiter, (req, res) => {
   upload.single('video')(req, res, (err) => {
     if (err) {
@@ -238,6 +356,22 @@ app.post('/upload', uploadLimiter, (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
+
+    if (enforceQuotaAfterUpload(req.file.path)) {
+      return res.status(413).json({ error: 'Общий лимит хранилища для загрузок исчерпан. Освободите место и попробуйте снова.' });
+    }
+
+    const room = sanitizeRoom(req.body && req.body.room);
+    if (!room) {
+      // Комната не передана/некорректна — не оставляем файл висеть без
+      // владельца, сразу удаляем то, что multer уже успел записать на диск.
+      fs.unlink(req.file.path, (unlinkErr) => {
+        if (unlinkErr) console.error('Не удалось удалить файл без комнаты:', unlinkErr.message);
+      });
+      return res.status(400).json({ error: 'Не указана комната для загрузки' });
+    }
+
+    registerVideoOwnership(req.file.filename, room);
     res.json({ filename: req.file.filename });
   });
 });
@@ -250,18 +384,34 @@ app.post('/upload-image', uploadImageLimiter, (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
+    if (enforceQuotaAfterUpload(req.file.path)) {
+      return res.status(413).json({ error: 'Общий лимит хранилища для загрузок исчерпан. Освободите место и попробуйте снова.' });
+    }
     res.json({ filename: req.file.filename });
   });
 });
 
-// Список загруженных файлов
+// Список загруженных файлов — только те, что были загружены в указанную
+// комнату (см. блок про IDOR выше). Без валидной комнаты возвращаем пустой
+// список, а не всё содержимое uploads/.
 app.get('/videos', (req, res) => {
-  const files = fs.readdirSync(UPLOAD_DIR).filter(f => !f.startsWith('.'));
+  const room = sanitizeRoom(req.query.room);
+  if (!room) return res.json([]);
+
+  const files = fs.readdirSync(UPLOAD_DIR)
+    .filter((f) => !f.startsWith('.') && isVideoOwnedByRoom(f, room));
   res.json(files);
 });
 
-// Стриминг видео с поддержкой Range-запросов (перемотка)
+// Стриминг видео с поддержкой Range-запросов (перемотка).
+// Требуем ту же комнату, в которую файл был загружен (см. IDOR-фикс выше):
+// без неё или с чужой комнатой — 403, а не отдача файла по одному лишь имени.
 app.get('/video/:filename', (req, res) => {
+  const room = sanitizeRoom(req.query.room);
+  if (!room || !isVideoOwnedByRoom(req.params.filename, room)) {
+    return res.status(403).send('Нет доступа к этому видео из указанной комнаты');
+  }
+
   const filePath = path.join(UPLOAD_DIR, req.params.filename);
   if (!fs.existsSync(filePath)) return res.status(404).send('Файл не найден');
 
@@ -335,6 +485,9 @@ function cleanupOldFiles() {
             if (err) console.error(`Не удалось удалить старый файл ${file}:`, err.message);
             else console.log(`Автоочистка: удалён старый файл ${file}`);
           });
+          // Файла больше нет — убираем и запись о его комнате-владельце,
+          // иначе videoRoomOwner будет бесконечно расти за счёт удалённых файлов.
+          videoRoomOwner.delete(file);
         }
       });
     });
@@ -517,6 +670,10 @@ io.on('connection', (socket) => {
 
   socket.on('select-video', withRateLimit(socket, 'select-video', ({ room, filename }) => {
     if (!rooms[room]) return;
+    // Файл должен быть загружен именно в эту комнату — иначе участник может
+    // угадать/подобрать имя чужого файла (см. IDOR-фикс выше) и заставить
+    // сервер и остальных участников трактовать его как видео своей комнаты.
+    if (!isVideoOwnedByRoom(filename, room)) return;
     rooms[room].video = filename;
     rooms[room].currentTime = 0;
     rooms[room].playing = false;
