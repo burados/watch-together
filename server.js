@@ -115,6 +115,45 @@ if (!fs.existsSync(CHAT_IMAGE_DIR)) {
   fs.mkdirSync(CHAT_IMAGE_DIR, { recursive: true });
 }
 
+// --- Ограничение MIME-типов при загрузке видео ---
+//
+// До этого момента /upload принимал файл любого типа: filename() только
+// вычищал недопустимые символы из имени, но не проверял, что за файл вообще
+// пришёл. При этом /video/:filename отдаёт контент с жёстко прописанным
+// Content-Type: video/mp4 независимо от реального содержимого — то есть
+// сервер был готов молча сохранить и раздать любой файл (например .html/.js)
+// под видео-эндпоинтом.
+//
+// Проверяем ДВА независимых сигнала и требуем совпадения обоих:
+//  - file.mimetype, который выставляет браузер по содержимому файла
+//    (Blob/File.type), а не только по расширению в имени;
+//  - расширение из originalname.
+// Одного mimetype недостаточно (его несложно подделать в форме на клиенте),
+// одного расширения тоже недостаточно (это и есть ровно "проверка не только
+// по расширению", которую убирает эта проверка) — поэтому оба должны быть
+// одновременно из белого списка распространённых видеоформатов.
+const ALLOWED_VIDEO_MIME_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
+  'video/x-matroska',
+  'video/x-msvideo',
+  'video/x-ms-wmv',
+  'video/3gpp',
+  'video/mp2t'
+]);
+
+const ALLOWED_VIDEO_EXTENSIONS = new Set([
+  '.mp4', '.m4v', '.webm', '.ogg', '.ogv', '.mov', '.mkv', '.avi', '.wmv', '.3gp', '.ts'
+]);
+
+function isAllowedVideoFile(file) {
+  const mimetype = (file.mimetype || '').toLowerCase();
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  return ALLOWED_VIDEO_MIME_TYPES.has(mimetype) && ALLOWED_VIDEO_EXTENSIONS.has(ext);
+}
+
 // --- Настройка загрузки файлов ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -125,7 +164,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 8 * 1024 * 1024 * 1024 } // до 8 ГБ
+  limits: { fileSize: 8 * 1024 * 1024 * 1024 }, // до 8 ГБ
+  fileFilter: (req, file, cb) => {
+    if (!isAllowedVideoFile(file)) {
+      return cb(new Error(
+        'Недопустимый формат видео. Разрешены: MP4, WebM, OGG, MOV, MKV, AVI, WMV, 3GP, TS'
+      ));
+    }
+    cb(null, true);
+  }
 });
 
 // --- Загрузка картинок в чат (скриншоты из буфера обмена, фото) ---
@@ -379,13 +426,64 @@ function withRateLimit(socket, eventName, handler) {
   };
 }
 
+// --- Валидация и санитизация name/room при join-room ---
+//
+// До этого момента room/name из события join-room использовались как есть,
+// без какой-либо проверки типа или длины. Это не XSS-риск (имя выводится на
+// клиенте через textContent, не innerHTML), но реальная проблема в другом:
+// - room/name могут прийти вообще не строкой (объект, массив, число,
+//   отсутствовать) — это либо уронит обработчик, либо запишет мусор в
+//   socket.io room key / данные комнаты;
+// - ничем не ограниченная длина строки позволяет засыпать сервер и всех
+//   участников комнаты гигантскими значениями в каждом чат-сообщении/системном
+//   уведомлении ("X присоединился(-ась)");
+// - управляющие символы (\x00-\x1F и т.п.) в имени/коде комнаты не нужны ни
+//   для одного легитимного сценария и могут ломать логи/консоль на клиенте.
+//
+// Ограничения по длине выбраны с запасом относительно client-side maxlength
+// (20 для имени, 30 для кода комнаты в index.html), чтобы не задеть обычных
+// пользователей, но полностью исключить произвол при обращении напрямую к
+// сокету в обход разметки.
+const MAX_NAME_LENGTH = 40;
+const MAX_ROOM_LENGTH = 60;
+
+// Управляющие символы (включая \x7F/DEL) — вырезаем из имени и кода комнаты
+function stripControlChars(str) {
+  return str.replace(/[\x00-\x1F\x7F]/g, '');
+}
+
+function sanitizeName(rawName) {
+  if (typeof rawName !== 'string') return 'Гость';
+  const cleaned = stripControlChars(rawName).trim().slice(0, MAX_NAME_LENGTH);
+  return cleaned || 'Гость';
+}
+
+// Возвращает нормализованный код комнаты или null, если он некорректен
+// (не строка / пустой после очистки). Специально не ограничиваем алфавит
+// набором [a-z0-9-] жёстко: пользователи уже могли создать комнаты с
+// пробелами/юникодом в названии, и мы не хотим ломать существующие ссылки —
+// достаточно убрать управляющие символы и ограничить длину.
+function sanitizeRoom(rawRoom) {
+  if (typeof rawRoom !== 'string') return null;
+  const cleaned = stripControlChars(rawRoom).trim().slice(0, MAX_ROOM_LENGTH);
+  return cleaned || null;
+}
+
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('join-room', withRateLimit(socket, 'join-room', ({ room, name }) => {
+  socket.on('join-room', withRateLimit(socket, 'join-room', (payload) => {
+    const safeRoom = sanitizeRoom(payload && payload.room);
+    if (!safeRoom) {
+      socket.emit('join-error', { error: 'Некорректный код комнаты' });
+      return;
+    }
+    const safeName = sanitizeName(payload && payload.name);
+
+    const room = safeRoom;
     currentRoom = room;
     socket.join(room);
-    socket.data.name = name || 'Гость';
+    socket.data.name = safeName;
 
     if (!rooms[room]) {
       rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null };
