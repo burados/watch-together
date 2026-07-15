@@ -5,6 +5,7 @@ const fs = require('fs');
 const multer = require('multer');
 const helmet = require('helmet');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
 const { randomUUID } = require('crypto');
 
@@ -149,8 +150,41 @@ app.use(cors(corsOptions));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
 
+// --- Rate-limiting загрузок ---
+//
+// Ограничиваем частоту запросов на /upload и /upload-image по IP. Это не
+// защита от DDoS (для этого нужен внешний слой — nginx/Cloudflare), а именно
+// защита от злоупотребления самой функцией загрузки: заливка кучи больших
+// видео подряд забивает диск быстрее, чем успевает сработать автоочистка;
+// частые вызовы /upload-image — самый дешёвый способ засыпать сервер записью
+// на диск через чат.
+//
+// Настраивается через переменные окружения, чтобы можно было подстроить под
+// реальную нагрузку без правки кода.
+function jsonRateLimitHandler(message) {
+  return (req, res) => {
+    res.status(429).json({ error: message });
+  };
+}
+
+const uploadLimiter = rateLimit({
+  windowMs: (parseInt(process.env.UPLOAD_RATE_WINDOW_MINUTES, 10) || 15) * 60 * 1000,
+  limit: parseInt(process.env.UPLOAD_RATE_MAX, 10) || 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler('Слишком много загрузок видео с этого адреса. Попробуйте позже.')
+});
+
+const uploadImageLimiter = rateLimit({
+  windowMs: (parseInt(process.env.UPLOAD_IMAGE_RATE_WINDOW_MINUTES, 10) || 10) * 60 * 1000,
+  limit: parseInt(process.env.UPLOAD_IMAGE_RATE_MAX, 10) || 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: jsonRateLimitHandler('Слишком много загрузок картинок с этого адреса. Попробуйте позже.')
+});
+
 // Загрузка видео
-app.post('/upload', (req, res) => {
+app.post('/upload', uploadLimiter, (req, res) => {
   upload.single('video')(req, res, (err) => {
     if (err) {
       console.error('Ошибка загрузки:', err.message);
@@ -162,7 +196,7 @@ app.post('/upload', (req, res) => {
 });
 
 // Загрузка картинки в чат (скрин из буфера обмена или фото с устройства)
-app.post('/upload-image', (req, res) => {
+app.post('/upload-image', uploadImageLimiter, (req, res) => {
   uploadChatImage.single('image')(req, res, (err) => {
     if (err) {
       console.error('Ошибка загрузки картинки:', err.message);
@@ -290,10 +324,65 @@ function cleanupOldChatImages() {
 setInterval(cleanupOldChatImages, FILE_CLEANUP_INTERVAL_MS);
 cleanupOldChatImages();
 
+// --- Rate-limiting Socket.IO событий (анти-флуд) ---
+//
+// express-rate-limit защищает только HTTP-роуты (/upload, /upload-image),
+// но основная поверхность для флуда — это как раз WS-события: можно долбить
+// chat-message/seek/typing сотни раз в секунду и никакой HTTP-лимитер этого
+// не увидит. Поэтому здесь отдельный, простой per-socket sliding-window
+// лимитер: для каждого сокета и каждого события считаем количество вызовов
+// в скользящем окне и молча отбрасываем всё, что превышает лимит (без ответа
+// клиенту — это анти-флуд, а не обучение атакующего тому, где граница).
+//
+// Лимиты подобраны с запасом под обычное использование (быстрый чат,
+// перетаскивание ползунка перемотки), но достаточно жёстко, чтобы не дать
+// закинуть сервер/комнату событиями.
+const SOCKET_EVENT_LIMITS = {
+  'chat-message': { windowMs: 10_000, max: 10 },
+  'message-reaction': { windowMs: 10_000, max: 20 },
+  'seek': { windowMs: 5_000, max: 15 },
+  'play': { windowMs: 5_000, max: 10 },
+  'pause': { windowMs: 5_000, max: 10 },
+  'typing': { windowMs: 5_000, max: 15 },
+  'stop-typing': { windowMs: 5_000, max: 15 },
+  'select-video': { windowMs: 10_000, max: 10 },
+  'set-external-video': { windowMs: 10_000, max: 10 },
+  'set-stream-link': { windowMs: 10_000, max: 10 },
+  'join-room': { windowMs: 10_000, max: 10 }
+};
+
+// true — событие превысило лимит и должно быть отброшено
+function isSocketEventRateLimited(socket, eventName) {
+  const limit = SOCKET_EVENT_LIMITS[eventName];
+  if (!limit) return false;
+
+  const now = Date.now();
+  if (!socket.data.rateBuckets) socket.data.rateBuckets = {};
+  let bucket = socket.data.rateBuckets[eventName];
+
+  if (!bucket || now - bucket.windowStart > limit.windowMs) {
+    bucket = { windowStart: now, count: 0 };
+    socket.data.rateBuckets[eventName] = bucket;
+  }
+
+  bucket.count += 1;
+  return bucket.count > limit.max;
+}
+
+// Оборачивает обработчик события: если лимит для eventName превышен —
+// обработчик просто не вызывается. Используется для всех событий, которые
+// перечислены в SOCKET_EVENT_LIMITS.
+function withRateLimit(socket, eventName, handler) {
+  return (...args) => {
+    if (isSocketEventRateLimited(socket, eventName)) return;
+    handler(...args);
+  };
+}
+
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('join-room', ({ room, name }) => {
+  socket.on('join-room', withRateLimit(socket, 'join-room', ({ room, name }) => {
     currentRoom = room;
     socket.join(room);
     socket.data.name = name || 'Гость';
@@ -326,9 +415,9 @@ io.on('connection', (socket) => {
     });
 
     io.to(room).emit('user-count', io.sockets.adapter.rooms.get(room)?.size || 1);
-  });
+  }));
 
-  socket.on('select-video', ({ room, filename }) => {
+  socket.on('select-video', withRateLimit(socket, 'select-video', ({ room, filename }) => {
     if (!rooms[room]) return;
     rooms[room].video = filename;
     rooms[room].currentTime = 0;
@@ -336,12 +425,12 @@ io.on('connection', (socket) => {
     rooms[room].streamLink = null;
     rooms[room].externalVideo = null;
     io.to(room).emit('video-selected', { filename });
-  });
+  }));
 
   // Прямая ссылка на видеофайл (.mp4/.webm/.m3u8 и т.п.) с внешнего сервера.
   // В отличие от set-stream-link, тут видео грузится прямо в наш <video>,
   // поэтому play/pause/перемотка синхронизируются между зрителями по-настоящему.
-  socket.on('set-external-video', ({ room, url }) => {
+  socket.on('set-external-video', withRateLimit(socket, 'set-external-video', ({ room, url }) => {
     if (!rooms[room] || !url) return;
     const trimmed = String(url).trim().slice(0, 2000);
     if (!/^https?:\/\//i.test(trimmed)) return;
@@ -351,12 +440,12 @@ io.on('connection', (socket) => {
     rooms[room].currentTime = 0;
     rooms[room].playing = false;
     io.to(room).emit('external-video-selected', { url: trimmed, from: socket.data.name || 'Гость' });
-  });
+  }));
 
   // Ссылка на трансляцию с другого сайта. Настоящую синхронизацию play/pause
   // тут не сделать (чужой плеер нам не подконтролен), но для прямого эфира
   // это и не нужно — все просто открывают один и тот же линк одновременно.
-  socket.on('set-stream-link', ({ room, url }) => {
+  socket.on('set-stream-link', withRateLimit(socket, 'set-stream-link', ({ room, url }) => {
     if (!rooms[room] || !url) return;
     const trimmed = String(url).trim().slice(0, 2000);
     if (!/^https?:\/\//i.test(trimmed)) return;
@@ -364,39 +453,39 @@ io.on('connection', (socket) => {
     rooms[room].externalVideo = null;
     rooms[room].streamLink = trimmed;
     io.to(room).emit('stream-link-updated', { url: trimmed, from: socket.data.name || 'Гость' });
-  });
+  }));
 
-  socket.on('play', ({ room, time }) => {
+  socket.on('play', withRateLimit(socket, 'play', ({ room, time }) => {
     if (!rooms[room]) return;
     rooms[room].playing = true;
     rooms[room].currentTime = time;
     socket.to(room).emit('sync-play', { time });
-  });
+  }));
 
-  socket.on('pause', ({ room, time }) => {
+  socket.on('pause', withRateLimit(socket, 'pause', ({ room, time }) => {
     if (!rooms[room]) return;
     rooms[room].playing = false;
     rooms[room].currentTime = time;
     socket.to(room).emit('sync-pause', { time });
-  });
+  }));
 
-  socket.on('seek', ({ room, time }) => {
+  socket.on('seek', withRateLimit(socket, 'seek', ({ room, time }) => {
     if (!rooms[room]) return;
     rooms[room].currentTime = time;
     socket.to(room).emit('sync-seek', { time });
-  });
+  }));
 
-  socket.on('typing', ({ room, name }) => {
+  socket.on('typing', withRateLimit(socket, 'typing', ({ room, name }) => {
     if (!room) return;
     socket.to(room).emit('user-typing', { name: name || socket.data.name || 'Гость' });
-  });
+  }));
 
-  socket.on('stop-typing', ({ room }) => {
+  socket.on('stop-typing', withRateLimit(socket, 'stop-typing', ({ room }) => {
     if (!room) return;
     socket.to(room).emit('user-stop-typing', {});
-  });
+  }));
 
-  socket.on('chat-message', ({ room, text, image, replyTo }) => {
+  socket.on('chat-message', withRateLimit(socket, 'chat-message', ({ room, text, image, replyTo }) => {
     if (!room) return;
     const trimmedText = (text || '').toString().trim().slice(0, 4000);
     // Картинка обязана быть именем файла, реально загруженным через /upload-image —
@@ -432,10 +521,10 @@ io.on('connection', (socket) => {
       image: safeImage,
       replyTo: safeReplyTo
     });
-  });
+  }));
 
   // Реакция на конкретное сообщение чата (одна реакция на пользователя за сообщение)
-  socket.on('message-reaction', ({ room, messageId, emoji }) => {
+  socket.on('message-reaction', withRateLimit(socket, 'message-reaction', ({ room, messageId, emoji }) => {
     if (!room || !messageId || !emoji || !rooms[room]) return;
     const user = socket.data.name || 'Гость';
     if (!rooms[room].reactions) rooms[room].reactions = {};
@@ -458,7 +547,7 @@ io.on('connection', (socket) => {
     }
 
     io.to(room).emit('message-reaction-update', { messageId, reactions: msgReactions });
-  });
+  }));
 
   socket.on('disconnect', () => {
     if (currentRoom) {
