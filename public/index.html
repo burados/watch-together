@@ -1742,6 +1742,23 @@ function wirePlayerCommon(player) {
   player.onplay = () => { if (!syncing) socket.emit('play', { room, time: player.currentTime }); };
   player.onpause = () => { if (!syncing) socket.emit('pause', { room, time: player.currentTime }); };
   player.onseeked = () => { if (!syncing) socket.emit('seek', { room, time: player.currentTime }); };
+
+  // Без этого сбой загрузки внешнего видео (битая ссылка, сайт не отдаёт файл
+  // на чужой домен, неверный формат и т.п.) проходит совсем незаметно —
+  // спиннер просто крутится вечно, без единой подсказки, что пошло не так.
+  player.onerror = () => {
+    loading.classList.remove('show');
+    const err = player.error;
+    let reason = 'неизвестная ошибка';
+    if (err) {
+      if (err.code === err.MEDIA_ERR_NETWORK) reason = 'сеть/сервер не отдал видео (возможно, блокирует чужие сайты)';
+      else if (err.code === err.MEDIA_ERR_DECODE) reason = 'повреждённый файл или неподдерживаемый формат';
+      else if (err.code === err.MEDIA_ERR_SRC_NOT_SUPPORTED) reason = 'формат/ссылка не поддерживается браузером';
+      else if (err.code === err.MEDIA_ERR_ABORTED) reason = 'загрузка прервана';
+    }
+    console.error('Ошибка воспроизведения видео:', err);
+    showToast('Не удалось загрузить видео по этой ссылке: ' + reason);
+  };
 }
 
 function showVideo(filename, notify) {
