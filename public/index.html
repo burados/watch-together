@@ -916,6 +916,11 @@ select{
   transition:transform .18s var(--ease-spring);
 }
 .profile-avatar-lg.has-emoji{ font-size:34px; }
+.profile-avatar-lg.has-photo{ overflow:hidden; }
+.profile-avatar-lg.has-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+.avatar-photo-row{ display:flex; gap:8px; justify-content:center; margin-top:10px; }
+.avatar-photo-row input[type=file]{ display:none; }
 
 .profile-stats-row{
   display:flex; gap:8px; justify-content:center; margin-top:14px;
@@ -938,6 +943,8 @@ select{
 .avatar-pick-btn.selected{ border-color:var(--primary); background:var(--primary-soft); }
 
 .msg-avatar.has-emoji{ font-size:16px; background:var(--surface) !important; }
+.msg-avatar.has-photo{ overflow:hidden; padding:0; }
+.msg-avatar.has-photo img{ width:100%; height:100%; object-fit:cover; display:block; }
 
 /* GIF-пикер */
 .gif-search-row{ display:flex; gap:8px; margin-bottom:12px; }
@@ -1254,6 +1261,11 @@ select{
     </div>
 
     <div class="field-label" style="margin-top:16px;">Аватар</div>
+    <div class="avatar-photo-row">
+      <button class="btn btn-ghost ripple-host" type="button" onclick="document.getElementById('avatarPhotoInput').click()">📷 Загрузить фото</button>
+      <button class="btn btn-ghost ripple-host" type="button" id="removeAvatarPhotoBtn" style="display:none;" onclick="removeAvatarPhoto()">Убрать фото</button>
+      <input type="file" id="avatarPhotoInput" accept="image/*" onchange="handleAvatarPhotoInput(event)" />
+    </div>
     <div class="avatar-pick-grid" id="avatarPickGrid"></div>
 
     <p style="color:var(--text-secondary); font-size:12.5px; margin-top:14px;">Профиль хранится локально на этом устройстве — аккаунта не требуется</p>
@@ -1304,6 +1316,9 @@ let socket;
 let room, name;
 let avatarEmoji = '';
 try { avatarEmoji = localStorage.getItem('wt_avatar') || ''; } catch (e) {}
+let avatarPhoto = ''; // имя файла на сервере (uploads/avatars), не полный путь
+try { avatarPhoto = localStorage.getItem('wt_avatar_photo') || ''; } catch (e) {}
+function avatarPhotoUrl(filename) { return filename ? '/avatars/' + filename : ''; }
 let gifSearchDebounce = null;
 let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
 let typingTimeout = null;
@@ -1552,7 +1567,7 @@ function enterRoom() {
   document.getElementById('profileRoomCode').textContent = room;
   requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
 
-  renderAvatarEl(document.getElementById('profileAvatar'), name, avatarEmoji);
+  renderAvatarEl(document.getElementById('profileAvatar'), name, avatarEmoji, avatarPhotoUrl(avatarPhoto));
   document.getElementById('profileNameInput').value = name;
 
   saveRecentRoom(room, name);
@@ -1576,7 +1591,7 @@ function setupSocket() {
   // receiving chat/sync until the user manually re-entered the room.
   let hasConnectedBefore = false;
   socket.on('connect', () => {
-    socket.emit('join-room', { room, name, avatar: avatarEmoji });
+    socket.emit('join-room', { room, name, avatar: avatarEmoji, avatarPhoto });
     loadVideoList();
     if (hasConnectedBefore) showToast('Соединение восстановлено');
     hasConnectedBefore = true;
@@ -2186,14 +2201,25 @@ function isEmojiOnlyText(text) {
   const stripped = t.replace(/[\p{Extended_Pictographic}\p{Emoji_Component}\u{FE0F}\u{200D}\s]/gu, '');
   return stripped.length === 0;
 }
-function renderAvatarEl(el, displayName, emoji) {
+function renderAvatarEl(el, displayName, emoji, photoUrl) {
+  el.classList.remove('has-emoji', 'has-photo');
+  el.innerHTML = '';
+  if (photoUrl) {
+    el.style.background = 'transparent';
+    const img = document.createElement('img');
+    img.src = photoUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    el.appendChild(img);
+    el.classList.add('has-photo');
+    return;
+  }
   el.style.background = avatarColor(displayName);
   if (emoji) {
     el.textContent = emoji;
     el.classList.add('has-emoji');
   } else {
     el.textContent = initials(displayName);
-    el.classList.remove('has-emoji');
   }
 }
 function formatTime(date) {
@@ -2230,7 +2256,7 @@ function addChatMessage(msg) {
 
     const avatar = document.createElement('div');
     avatar.className = 'msg-avatar';
-    renderAvatarEl(avatar, displayName, msg.avatar);
+    renderAvatarEl(avatar, displayName, msg.avatar, msg.avatarPhoto || '');
 
     const bodyEl = document.createElement('div');
     bodyEl.className = 'msg-body';
@@ -2371,17 +2397,77 @@ function openProfileEditor() {
     grid.appendChild(b);
   });
 
-  renderAvatarEl(document.getElementById('profileAvatar'), name || 'Гость', avatarEmoji);
+  renderAvatarEl(document.getElementById('profileAvatar'), name || 'Гость', avatarEmoji, avatarPhotoUrl(avatarPhoto));
+  document.getElementById('removeAvatarPhotoBtn').style.display = avatarPhoto ? '' : 'none';
   openSheet('profileOverlay');
 }
 
 function selectAvatarEmoji(em, grid) {
   avatarEmoji = em;
+  avatarPhoto = ''; // выбор эмодзи отменяет загруженное фото
+  document.getElementById('removeAvatarPhotoBtn').style.display = 'none';
   grid.querySelectorAll('.avatar-pick-btn').forEach((b) => b.classList.remove('selected'));
   const idx = em ? AVATAR_EMOJI_SET.indexOf(em) + 1 : 0;
   grid.children[idx].classList.add('selected');
   const currentName = document.getElementById('profileNameInput').value.trim() || name || 'Гость';
   renderAvatarEl(document.getElementById('profileAvatar'), currentName, avatarEmoji);
+}
+
+function handleAvatarPhotoInput(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ''; // разрешаем выбрать тот же файл повторно
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { showToast('Выбери файл изображения'); return; }
+  if (file.size > 8 * 1024 * 1024) { showToast('Фото слишком большое (максимум 8 МБ)'); return; }
+
+  showToast('Загружаем фото…');
+  uploadAvatarPhoto(file)
+    .then((filename) => {
+      avatarPhoto = filename;
+      avatarEmoji = ''; // фото важнее эмодзи — сбрасываем выбор эмодзи
+      try { localStorage.setItem('wt_avatar_photo', avatarPhoto); localStorage.setItem('wt_avatar', ''); } catch (e) {}
+      const currentName = document.getElementById('profileNameInput').value.trim() || name || 'Гость';
+      renderAvatarEl(document.getElementById('profileAvatar'), currentName, avatarEmoji, avatarPhotoUrl(avatarPhoto));
+      document.getElementById('avatarPickGrid').querySelectorAll('.avatar-pick-btn').forEach((b) => b.classList.remove('selected'));
+      document.getElementById('removeAvatarPhotoBtn').style.display = '';
+      showToast('Фото загружено');
+    })
+    .catch((err) => {
+      console.error('Ошибка загрузки аватара:', err);
+      showToast('Не удалось загрузить фото');
+    });
+}
+
+function uploadAvatarPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload-avatar');
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error('Сервер вернул код ' + xhr.status));
+        return;
+      }
+      try {
+        const res = JSON.parse(xhr.responseText);
+        if (!res.filename) { reject(new Error('Сервер не вернул имя файла')); return; }
+        resolve(res.filename);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.onerror = () => reject(new Error('Ошибка сети при загрузке фото'));
+    xhr.send(formData);
+  });
+}
+
+function removeAvatarPhoto() {
+  avatarPhoto = '';
+  try { localStorage.setItem('wt_avatar_photo', ''); } catch (e) {}
+  document.getElementById('removeAvatarPhotoBtn').style.display = 'none';
+  const currentName = document.getElementById('profileNameInput').value.trim() || name || 'Гость';
+  renderAvatarEl(document.getElementById('profileAvatar'), currentName, avatarEmoji, '');
 }
 
 function saveProfile() {
@@ -2391,12 +2477,13 @@ function saveProfile() {
   try {
     localStorage.setItem('wt_name', name);
     localStorage.setItem('wt_avatar', avatarEmoji);
+    localStorage.setItem('wt_avatar_photo', avatarPhoto);
   } catch (e) {}
 
-  renderAvatarEl(document.getElementById('profileAvatar'), name, avatarEmoji);
+  renderAvatarEl(document.getElementById('profileAvatar'), name, avatarEmoji, avatarPhotoUrl(avatarPhoto));
 
   if (socket && room) {
-    socket.emit('update-profile', { room, name, avatar: avatarEmoji });
+    socket.emit('update-profile', { room, name, avatar: avatarEmoji, avatarPhoto });
   }
 
   showToast('Профиль сохранён');
