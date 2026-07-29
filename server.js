@@ -56,6 +56,63 @@ const uploadChatImage = multer({
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
 
+// --- GIF-поиск (Tenor) ---
+// Нужен бесплатный ключ Tenor API (см. README) — без него поиск/трендовые GIF
+// просто не работают, но остальное приложение продолжает работать как обычно.
+const TENOR_API_KEY = process.env.TENOR_API_KEY || '';
+const TENOR_BASE = 'https://tenor.googleapis.com/v2';
+
+async function tenorRequest(res, endpoint, params) {
+  if (!TENOR_API_KEY) {
+    return res.status(501).json({ error: 'no-key', message: 'TENOR_API_KEY не настроен на сервере' });
+  }
+  try {
+    const qs = new URLSearchParams({
+      key: TENOR_API_KEY,
+      client_key: 'watch-together',
+      limit: '24',
+      media_filter: 'gif,tinygif',
+      contentfilter: 'medium',
+      ...params
+    });
+    const r = await fetch(`${TENOR_BASE}/${endpoint}?${qs.toString()}`);
+    if (!r.ok) return res.status(502).json({ error: 'tenor-error', status: r.status });
+    const data = await r.json();
+    const results = (data.results || []).map((item) => ({
+      id: item.id,
+      title: item.content_description || '',
+      preview: item.media_formats?.tinygif?.url || item.media_formats?.gif?.url,
+      url: item.media_formats?.gif?.url,
+      width: item.media_formats?.gif?.dims?.[0] || 200,
+      height: item.media_formats?.gif?.dims?.[1] || 200
+    })).filter((g) => g.url);
+    res.json({ results });
+  } catch (err) {
+    console.error('Ошибка запроса к Tenor:', err.message);
+    res.status(502).json({ error: 'tenor-request-failed' });
+  }
+}
+
+app.get('/api/gif/trending', (req, res) => tenorRequest(res, 'featured', {}));
+app.get('/api/gif/search', (req, res) => {
+  const q = (req.query.q || '').toString().trim().slice(0, 60);
+  if (!q) return tenorRequest(res, 'featured', {});
+  tenorRequest(res, 'search', { q });
+});
+
+// Разрешённые домены для GIF-сообщений в чате (только CDN Tenor — картинки
+// грузятся у клиента напрямую по этому URL, поэтому нельзя пускать что попало)
+const ALLOWED_GIF_HOSTS = ['media.tenor.com', 'media1.tenor.com', 'media0.tenor.com', 'c.tenor.com', 'tenor.com'];
+function isAllowedGifUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return false;
+    return ALLOWED_GIF_HOSTS.some((h) => u.hostname === h || u.hostname.endsWith('.' + h));
+  } catch (e) {
+    return false;
+  }
+}
+
 // Загрузка видео
 app.post('/upload', (req, res) => {
   upload.single('video')(req, res, (err) => {
@@ -200,10 +257,11 @@ cleanupOldChatImages();
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('join-room', ({ room, name }) => {
+  socket.on('join-room', ({ room, name, avatar }) => {
     currentRoom = room;
     socket.join(room);
     socket.data.name = name || 'Гость';
+    socket.data.avatar = (avatar || '').toString().trim().slice(0, 8);
 
     if (!rooms[room]) {
       rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null };
@@ -293,6 +351,19 @@ io.on('connection', (socket) => {
     socket.to(room).emit('sync-seek', { time });
   });
 
+  // Пользователь изменил имя и/или аватар в профиле, находясь в комнате
+  socket.on('update-profile', ({ room, name, avatar }) => {
+    if (!room) return;
+    const oldName = socket.data.name || 'Гость';
+    const newName = (name || '').toString().trim().slice(0, 20) || oldName;
+    const newAvatar = (avatar || '').toString().trim().slice(0, 8);
+    socket.data.name = newName;
+    socket.data.avatar = newAvatar;
+    if (newName !== oldName) {
+      io.to(room).emit('chat-message', { system: true, text: `${oldName} теперь известен(на) как ${newName}` });
+    }
+  });
+
   socket.on('typing', ({ room, name }) => {
     if (!room) return;
     socket.to(room).emit('user-typing', { name: name || socket.data.name || 'Гость' });
@@ -303,7 +374,7 @@ io.on('connection', (socket) => {
     socket.to(room).emit('user-stop-typing', {});
   });
 
-  socket.on('chat-message', ({ room, text, image, replyTo }) => {
+  socket.on('chat-message', ({ room, text, image, gifUrl, replyTo }) => {
     if (!room) return;
     const trimmedText = (text || '').toString().trim().slice(0, 4000);
     // Картинка обязана быть именем файла, реально загруженным через /upload-image —
@@ -311,7 +382,12 @@ io.on('connection', (socket) => {
     const safeImage = (image && /^[a-zA-Z0-9._-]+$/.test(image) && fs.existsSync(path.join(CHAT_IMAGE_DIR, image)))
       ? image
       : null;
-    if (!trimmedText && !safeImage) return; // пустое сообщение без текста и картинки — игнорируем
+    // GIF — это внешняя ссылка на CDN Tenor, а не загруженный файл, поэтому
+    // проверяем домен, а не существование файла на диске
+    const safeGifUrl = (gifUrl && typeof gifUrl === 'string' && isAllowedGifUrl(gifUrl))
+      ? gifUrl.slice(0, 500)
+      : null;
+    if (!trimmedText && !safeImage && !safeGifUrl) return; // совсем пустое сообщение — игнорируем
 
     // "Ответ на сообщение" — сервер не хранит историю чата, поэтому просто
     // ретранслирует то, что прислал клиент (у него это сообщение уже есть на
@@ -322,8 +398,9 @@ io.on('connection', (socket) => {
       const replyName = String(replyTo.name || 'Гость').slice(0, 100);
       const replyText = String(replyTo.text || '').slice(0, 300);
       const replyImage = !!replyTo.image;
-      if (replyId && (replyText || replyImage)) {
-        safeReplyTo = { id: replyId, name: replyName, text: replyText, image: replyImage };
+      const replyGif = !!replyTo.gif;
+      if (replyId && (replyText || replyImage || replyGif)) {
+        safeReplyTo = { id: replyId, name: replyName, text: replyText, image: replyImage, gif: replyGif };
       }
     }
 
@@ -335,8 +412,10 @@ io.on('connection', (socket) => {
       id,
       system: false,
       name: socket.data.name,
+      avatar: socket.data.avatar || '',
       text: trimmedText,
       image: safeImage,
+      gifUrl: safeGifUrl,
       replyTo: safeReplyTo
     });
   });
