@@ -12,6 +12,7 @@ const io = new Server(server);
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 const CHAT_IMAGE_DIR = path.join(__dirname, 'uploads', 'chat-images');
+const AVATAR_DIR = path.join(__dirname, 'uploads', 'avatars');
 
 if (fs.existsSync(UPLOAD_DIR) && !fs.statSync(UPLOAD_DIR).isDirectory()) {
   fs.unlinkSync(UPLOAD_DIR);
@@ -21,6 +22,9 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 }
 if (!fs.existsSync(CHAT_IMAGE_DIR)) {
   fs.mkdirSync(CHAT_IMAGE_DIR, { recursive: true });
+}
+if (!fs.existsSync(AVATAR_DIR)) {
+  fs.mkdirSync(AVATAR_DIR, { recursive: true });
 }
 
 // --- Настройка загрузки файлов ---
@@ -53,56 +57,72 @@ const uploadChatImage = multer({
   }
 });
 
+// --- Загрузка фото для аватара профиля ---
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, AVATAR_DIR),
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname || '') || '.jpg').toLowerCase().replace(/[^a-z0-9.]/g, '') || '.jpg';
+    cb(null, Date.now() + '-' + randomUUID().slice(0, 8) + ext);
+  }
+});
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // до 8 МБ
+  fileFilter: (req, file, cb) => {
+    if (!/^image\//.test(file.mimetype)) return cb(new Error('Разрешены только изображения'));
+    cb(null, true);
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
+app.use('/avatars', express.static(AVATAR_DIR));
 
-// --- GIF-поиск (Tenor) ---
-// Нужен бесплатный ключ Tenor API (см. README) — без него поиск/трендовые GIF
-// просто не работают, но остальное приложение продолжает работать как обычно.
-const TENOR_API_KEY = process.env.TENOR_API_KEY || '';
-const TENOR_BASE = 'https://tenor.googleapis.com/v2';
+// --- GIF-поиск (Giphy) ---
+// По умолчанию используется публичный demo-ключ Giphy — он открыт для всех,
+// работает сразу «из коробки» без какой-либо настройки, но имеет невысокий
+// лимит запросов. Если нужен свой безлимитный ключ, задай переменную
+// окружения GIPHY_API_KEY на Render/Railway (см. README) — сервер
+// автоматически начнёт использовать его вместо demo-ключа.
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY || 'dc6zaTOxFJmzC';
+const GIPHY_BASE = 'https://api.giphy.com/v1/gifs';
 
-async function tenorRequest(res, endpoint, params) {
-  if (!TENOR_API_KEY) {
-    return res.status(501).json({ error: 'no-key', message: 'TENOR_API_KEY не настроен на сервере' });
-  }
+async function giphyRequest(res, endpoint, params) {
   try {
     const qs = new URLSearchParams({
-      key: TENOR_API_KEY,
-      client_key: 'watch-together',
+      api_key: GIPHY_API_KEY,
       limit: '24',
-      media_filter: 'gif,tinygif',
-      contentfilter: 'medium',
+      rating: 'pg-13',
       ...params
     });
-    const r = await fetch(`${TENOR_BASE}/${endpoint}?${qs.toString()}`);
-    if (!r.ok) return res.status(502).json({ error: 'tenor-error', status: r.status });
+    const r = await fetch(`${GIPHY_BASE}/${endpoint}?${qs.toString()}`);
+    if (!r.ok) return res.status(502).json({ error: 'giphy-error', status: r.status });
     const data = await r.json();
-    const results = (data.results || []).map((item) => ({
+    const results = (data.data || []).map((item) => ({
       id: item.id,
-      title: item.content_description || '',
-      preview: item.media_formats?.tinygif?.url || item.media_formats?.gif?.url,
-      url: item.media_formats?.gif?.url,
-      width: item.media_formats?.gif?.dims?.[0] || 200,
-      height: item.media_formats?.gif?.dims?.[1] || 200
+      title: item.title || '',
+      preview: item.images?.fixed_width_small?.url || item.images?.fixed_width?.url || item.images?.original?.url,
+      url: item.images?.original?.url,
+      width: Number(item.images?.original?.width) || 200,
+      height: Number(item.images?.original?.height) || 200
     })).filter((g) => g.url);
     res.json({ results });
   } catch (err) {
-    console.error('Ошибка запроса к Tenor:', err.message);
-    res.status(502).json({ error: 'tenor-request-failed' });
+    console.error('Ошибка запроса к Giphy:', err.message);
+    res.status(502).json({ error: 'giphy-request-failed' });
   }
 }
 
-app.get('/api/gif/trending', (req, res) => tenorRequest(res, 'featured', {}));
+app.get('/api/gif/trending', (req, res) => giphyRequest(res, 'trending', {}));
 app.get('/api/gif/search', (req, res) => {
   const q = (req.query.q || '').toString().trim().slice(0, 60);
-  if (!q) return tenorRequest(res, 'featured', {});
-  tenorRequest(res, 'search', { q });
+  if (!q) return giphyRequest(res, 'trending', {});
+  giphyRequest(res, 'search', { q });
 });
 
-// Разрешённые домены для GIF-сообщений в чате (только CDN Tenor — картинки
+// Разрешённые домены для GIF-сообщений в чате (только CDN Giphy — картинки
 // грузятся у клиента напрямую по этому URL, поэтому нельзя пускать что попало)
-const ALLOWED_GIF_HOSTS = ['media.tenor.com', 'media1.tenor.com', 'media0.tenor.com', 'c.tenor.com', 'tenor.com'];
+const ALLOWED_GIF_HOSTS = ['media.giphy.com', 'media0.giphy.com', 'media1.giphy.com', 'media2.giphy.com', 'media3.giphy.com', 'media4.giphy.com', 'i.giphy.com'];
 function isAllowedGifUrl(url) {
   try {
     const u = new URL(url);
@@ -111,6 +131,14 @@ function isAllowedGifUrl(url) {
   } catch (e) {
     return false;
   }
+}
+
+// Проверяет, что присланное имя файла аватара — это реально загруженный
+// через /upload-avatar файл, а не произвольный путь
+function isValidAvatarPhoto(filename) {
+  if (!filename || typeof filename !== 'string') return false;
+  if (!/^[a-zA-Z0-9._-]+$/.test(filename)) return false;
+  return fs.existsSync(path.join(AVATAR_DIR, filename));
 }
 
 // Загрузка видео
@@ -130,6 +158,18 @@ app.post('/upload-image', (req, res) => {
   uploadChatImage.single('image')(req, res, (err) => {
     if (err) {
       console.error('Ошибка загрузки картинки:', err.message);
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
+    res.json({ filename: req.file.filename });
+  });
+});
+
+// Загрузка фото для аватара профиля
+app.post('/upload-avatar', (req, res) => {
+  uploadAvatar.single('avatar')(req, res, (err) => {
+    if (err) {
+      console.error('Ошибка загрузки аватара:', err.message);
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
@@ -254,14 +294,45 @@ function cleanupOldChatImages() {
 setInterval(cleanupOldChatImages, FILE_CLEANUP_INTERVAL_MS);
 cleanupOldChatImages();
 
+// Аватарки, в отличие от картинок чата, должны жить долго, пока ими кто-то
+// пользуется — привязки к аккаунту нет, поэтому просто даём им сильно больший
+// срок жизни (по умолчанию 60 дней), чтобы не копился мусор от заброшенных
+// профилей, но при этом не удалять активно используемые фото
+const AVATAR_MAX_AGE_MS = (parseInt(process.env.AVATAR_MAX_AGE_DAYS, 10) || 60) * 24 * 60 * 60 * 1000;
+function cleanupOldAvatars() {
+  fs.readdir(AVATAR_DIR, (err, files) => {
+    if (err) {
+      console.error('Ошибка чтения папки avatars при очистке:', err.message);
+      return;
+    }
+    files.forEach((file) => {
+      if (file.startsWith('.')) return;
+      const filePath = path.join(AVATAR_DIR, file);
+      fs.stat(filePath, (err, stat) => {
+        if (err || !stat.isFile()) return;
+        if (Date.now() - stat.mtimeMs > AVATAR_MAX_AGE_MS) {
+          fs.unlink(filePath, (err) => {
+            if (err) console.error(`Не удалось удалить старую аватарку ${file}:`, err.message);
+            else console.log(`Автоочистка: удалена старая аватарка ${file}`);
+          });
+        }
+      });
+    });
+  });
+}
+
+setInterval(cleanupOldAvatars, FILE_CLEANUP_INTERVAL_MS);
+cleanupOldAvatars();
+
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('join-room', ({ room, name, avatar }) => {
+  socket.on('join-room', ({ room, name, avatar, avatarPhoto }) => {
     currentRoom = room;
     socket.join(room);
     socket.data.name = name || 'Гость';
     socket.data.avatar = (avatar || '').toString().trim().slice(0, 8);
+    socket.data.avatarPhoto = isValidAvatarPhoto(avatarPhoto) ? avatarPhoto : '';
 
     if (!rooms[room]) {
       rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null };
@@ -352,13 +423,14 @@ io.on('connection', (socket) => {
   });
 
   // Пользователь изменил имя и/или аватар в профиле, находясь в комнате
-  socket.on('update-profile', ({ room, name, avatar }) => {
+  socket.on('update-profile', ({ room, name, avatar, avatarPhoto }) => {
     if (!room) return;
     const oldName = socket.data.name || 'Гость';
     const newName = (name || '').toString().trim().slice(0, 20) || oldName;
     const newAvatar = (avatar || '').toString().trim().slice(0, 8);
     socket.data.name = newName;
     socket.data.avatar = newAvatar;
+    socket.data.avatarPhoto = isValidAvatarPhoto(avatarPhoto) ? avatarPhoto : '';
     if (newName !== oldName) {
       io.to(room).emit('chat-message', { system: true, text: `${oldName} теперь известен(на) как ${newName}` });
     }
@@ -413,6 +485,7 @@ io.on('connection', (socket) => {
       system: false,
       name: socket.data.name,
       avatar: socket.data.avatar || '',
+      avatarPhoto: socket.data.avatarPhoto ? ('/avatars/' + socket.data.avatarPhoto) : '',
       text: trimmedText,
       image: safeImage,
       gifUrl: safeGifUrl,
