@@ -689,9 +689,18 @@ select{
 .msg-row.own .msg-name{ color:var(--primary); }
 .msg-line{ display:flex; align-items:baseline; gap:8px; }
 .msg-text{ flex:1; min-width:0; font-size:13.5px; line-height:1.45; color:var(--text); word-break:break-word; white-space:pre-wrap; }
+.msg-text-emoji-only{
+  font-size:40px !important; line-height:1.15 !important;
+  animation:emoji-msg-pop .45s var(--ease-spring);
+}
+@keyframes emoji-msg-pop{
+  0%{ transform:scale(.3); opacity:0; }
+  60%{ transform:scale(1.18); opacity:1; }
+  100%{ transform:scale(1); opacity:1; }
+}
 .msg-time{ flex-shrink:0; font-size:10.5px; color:var(--text-faint); white-space:nowrap; }
 
-/* Двойной тап — быстрая реакция сердечком */
+/* Двойной тап / реакция — эмодзи вылетает и растворяется */
 .msg-heart-burst{
   position:absolute; top:50%; left:50%; z-index:15;
   transform:translate(-50%,-50%) scale(0);
@@ -705,6 +714,18 @@ select{
   45%{ transform:translate(-50%,-50%) scale(.95); opacity:1; }
   100%{ transform:translate(-50%,-58%) scale(1.05); opacity:0; }
 }
+
+/* Реакция появляется с лёгким "отскоком" */
+.reaction-chip{ animation:chip-pop-in .32s var(--ease-spring); }
+@keyframes chip-pop-in{
+  0%{ transform:scale(.3); opacity:0; }
+  60%{ transform:scale(1.12); opacity:1; }
+  100%{ transform:scale(1); opacity:1; }
+}
+
+/* Кнопки-эмодзи в пикерах реагируют на тап подпрыгиванием */
+.emoji-pick-btn{ transition:transform .15s var(--ease-spring); }
+.emoji-pick-btn:active{ transform:scale(1.35) rotate(-6deg); }
 
 .msg.system{
   align-self:center; text-align:center; color:var(--text-faint);
@@ -892,6 +913,52 @@ select{
   width:64px; height:64px; border-radius:20px; margin:0 auto 14px;
   display:flex; align-items:center; justify-content:center;
   font-family:var(--font-display); font-weight:800; font-size:24px; color:#fff;
+  transition:transform .18s var(--ease-spring);
+}
+.profile-avatar-lg.has-emoji{ font-size:34px; }
+
+.profile-stats-row{
+  display:flex; gap:8px; justify-content:center; margin-top:14px;
+}
+.profile-stat{
+  flex:1; max-width:130px; background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:10px 6px;
+}
+.profile-stat .n{ font-family:var(--font-display); font-weight:800; font-size:15px; color:var(--text); }
+.profile-stat .l{ font-size:10.5px; color:var(--text-faint); margin-top:2px; }
+
+.avatar-pick-grid{
+  display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px;
+}
+.avatar-pick-btn{
+  width:42px; height:42px; border-radius:13px; font-size:20px; cursor:pointer;
+  background:var(--surface); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+}
+.avatar-pick-btn.selected{ border-color:var(--primary); background:var(--primary-soft); }
+
+.msg-avatar.has-emoji{ font-size:16px; background:var(--surface) !important; }
+
+/* GIF-пикер */
+.gif-search-row{ display:flex; gap:8px; margin-bottom:12px; }
+.gif-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  max-height:52vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+}
+.gif-grid button{
+  border:1px solid var(--border); border-radius:12px; overflow:hidden;
+  background:var(--surface); padding:0; cursor:pointer; aspect-ratio:1.3;
+}
+.gif-grid img{ width:100%; height:100%; object-fit:cover; display:block; }
+.gif-empty{
+  grid-column:1 / -1; text-align:center; padding:28px 12px;
+  color:var(--text-faint); font-size:13px; line-height:1.5;
+}
+.gif-empty a{ color:var(--primary); }
+.msg-gif{ position:relative; }
+.msg-gif .gif-badge{
+  position:absolute; top:6px; left:6px; background:rgba(0,0,0,.6); color:#fff;
+  font-size:9.5px; font-weight:800; letter-spacing:.04em; padding:2px 6px; border-radius:6px;
 }
 
 .toast{
@@ -1102,6 +1169,7 @@ select{
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5-9 9"/></svg>
           </button>
           <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="handleChatImageSelect(event)" />
+          <button class="icon-btn" id="gifBtn" onmousedown="event.preventDefault()" onclick="openGifPicker()" aria-label="GIF" style="font-size:11px; font-weight:800; letter-spacing:.02em;">GIF</button>
           <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
           </button>
@@ -1179,9 +1247,23 @@ select{
     <div class="sheet-handle"></div>
     <div class="sheet-title" style="justify-content:flex-end; margin-bottom:0;"><button class="icon-btn" onclick="closeSheet('profileOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
     <div class="profile-avatar-lg" id="profileAvatar"></div>
-    <div style="font-family:var(--font-display); font-weight:800; font-size:17px;" id="profileName"></div>
-    <p style="color:var(--text-secondary); font-size:13px; margin-top:6px;">Вы смотрите как гость в этой комнате</p>
-    <button class="btn btn-ghost btn-block ripple-host" style="margin-top:18px;" onclick="closeSheet('profileOverlay')">Готово</button>
+
+    <div class="field-group" style="max-width:260px; margin:14px auto 0;">
+      <label class="field-label" for="profileNameInput">Имя</label>
+      <input class="field" type="text" id="profileNameInput" maxlength="20" placeholder="Твоё имя" />
+    </div>
+
+    <div class="field-label" style="margin-top:16px;">Аватар</div>
+    <div class="avatar-pick-grid" id="avatarPickGrid"></div>
+
+    <p style="color:var(--text-secondary); font-size:12.5px; margin-top:14px;">Профиль хранится локально на этом устройстве — аккаунта не требуется</p>
+
+    <div class="profile-stats-row">
+      <div class="profile-stat"><div class="n" id="profileRoomCode">—</div><div class="l">комната</div></div>
+      <div class="profile-stat"><div class="n" id="profileViewers">1</div><div class="l">зрителей онлайн</div></div>
+    </div>
+
+    <button class="btn btn-primary btn-block ripple-host" style="margin-top:18px;" onclick="saveProfile()">Сохранить</button>
   </div>
 </div>
 
@@ -1191,6 +1273,18 @@ select{
     <div class="sheet-handle"></div>
     <div class="sheet-title">Эмодзи <button class="icon-btn" onclick="closeSheet('emojiOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
     <div id="emojiGrid" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+  </div>
+</div>
+
+<!-- GIF sheet -->
+<div class="overlay" id="gifOverlay" onclick="if(event.target===this) closeSheet('gifOverlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">GIF <button class="icon-btn" onclick="closeSheet('gifOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="gif-search-row">
+      <input class="field" type="text" id="gifSearchInput" placeholder="Поиск GIF..." oninput="handleGifSearchInput()" enterkeyhint="search" />
+    </div>
+    <div class="gif-grid" id="gifGrid"></div>
   </div>
 </div>
 
@@ -1208,6 +1302,9 @@ select{
 <script>
 let socket;
 let room, name;
+let avatarEmoji = '';
+try { avatarEmoji = localStorage.getItem('wt_avatar') || ''; } catch (e) {}
+let gifSearchDebounce = null;
 let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
 let typingTimeout = null;
 let lastTypingEmit = 0;
@@ -1302,6 +1399,12 @@ window.addEventListener('orientationchange', () => setTimeout(() => {
 /* Nav bar hides on real chat-input focus, not on the kb-open guess —
    this is the reliable signal for "the user is actively typing in chat". */
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const savedName = localStorage.getItem('wt_name');
+    const nameField = document.getElementById('nameInput');
+    if (savedName && nameField && !nameField.value.trim()) nameField.value = savedName;
+  } catch (e) {}
+
   const chatInput = document.getElementById('chatInput');
   if (!chatInput) return;
   chatInput.addEventListener('focus', () => {
@@ -1439,17 +1542,18 @@ function enterRoom() {
   room = document.getElementById('roomInput').value.trim();
   if (!room) { showToast('Введите код комнаты'); return; }
 
+  try { localStorage.setItem('wt_name', name); } catch (e) {}
+
   document.getElementById('gate').style.display = 'none';
   document.getElementById('room').style.display = 'block';
   document.body.classList.add('in-room');
   document.getElementById('roomBadge').textContent = 'комната: ' + room;
   document.getElementById('settingsRoomCode').textContent = room;
+  document.getElementById('profileRoomCode').textContent = room;
   requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
 
-  const av = document.getElementById('profileAvatar');
-  av.style.background = avatarColor(name);
-  av.textContent = initials(name);
-  document.getElementById('profileName').textContent = name;
+  renderAvatarEl(document.getElementById('profileAvatar'), name, avatarEmoji);
+  document.getElementById('profileNameInput').value = name;
 
   saveRecentRoom(room, name);
   updateThemeButtons();
@@ -1472,7 +1576,7 @@ function setupSocket() {
   // receiving chat/sync until the user manually re-entered the room.
   let hasConnectedBefore = false;
   socket.on('connect', () => {
-    socket.emit('join-room', { room, name });
+    socket.emit('join-room', { room, name, avatar: avatarEmoji });
     loadVideoList();
     if (hasConnectedBefore) showToast('Соединение восстановлено');
     hasConnectedBefore = true;
@@ -1539,6 +1643,7 @@ function setupSocket() {
     const label = count + (count === 1 ? ' зритель' : ' зрителей');
     document.getElementById('userCount').textContent = label;
     document.getElementById('settingsViewers').textContent = count;
+    document.getElementById('profileViewers').textContent = count;
   });
 
   socket.on('user-typing', ({ name: who }) => {
@@ -1742,23 +1847,6 @@ function wirePlayerCommon(player) {
   player.onplay = () => { if (!syncing) socket.emit('play', { room, time: player.currentTime }); };
   player.onpause = () => { if (!syncing) socket.emit('pause', { room, time: player.currentTime }); };
   player.onseeked = () => { if (!syncing) socket.emit('seek', { room, time: player.currentTime }); };
-
-  // Без этого сбой загрузки внешнего видео (битая ссылка, сайт не отдаёт файл
-  // на чужой домен, неверный формат и т.п.) проходит совсем незаметно —
-  // спиннер просто крутится вечно, без единой подсказки, что пошло не так.
-  player.onerror = () => {
-    loading.classList.remove('show');
-    const err = player.error;
-    let reason = 'неизвестная ошибка';
-    if (err) {
-      if (err.code === err.MEDIA_ERR_NETWORK) reason = 'сеть/сервер не отдал видео (возможно, блокирует чужие сайты)';
-      else if (err.code === err.MEDIA_ERR_DECODE) reason = 'повреждённый файл или неподдерживаемый формат';
-      else if (err.code === err.MEDIA_ERR_SRC_NOT_SUPPORTED) reason = 'формат/ссылка не поддерживается браузером';
-      else if (err.code === err.MEDIA_ERR_ABORTED) reason = 'загрузка прервана';
-    }
-    console.error('Ошибка воспроизведения видео:', err);
-    showToast('Не удалось загрузить видео по этой ссылке: ' + reason);
-  };
 }
 
 function showVideo(filename, notify) {
@@ -1907,17 +1995,18 @@ document.addEventListener('keydown', (e) => {
    Chat
    ----------------------------------------------------------- */
 let pendingChatImage = null; // File объект, ожидающий отправки
-let replyingTo = null; // { id, name, text, image }
+let replyingTo = null; // { id, name, text, image, gif }
 
-function startReply(id, fromName, text, hasImage) {
+function startReply(id, fromName, text, hasImage, hasGif) {
   replyingTo = {
     id,
     name: fromName,
     text: (text || '').slice(0, 300),
-    image: !!hasImage
+    image: !!hasImage,
+    gif: !!hasGif
   };
   document.getElementById('replyToName').textContent = fromName;
-  document.getElementById('replyToText').textContent = text || (hasImage ? '📷 Фото' : '');
+  document.getElementById('replyToText').textContent = text || (hasGif ? '🎞 GIF' : (hasImage ? '📷 Фото' : ''));
   document.getElementById('replyPreview').classList.add('show');
   document.getElementById('chatInput').focus();
 }
@@ -2016,7 +2105,7 @@ function sendChat() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
   const imageFile = pendingChatImage;
-  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image } : null;
+  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif } : null;
 
   if (!text && !imageFile) return;
 
@@ -2088,6 +2177,25 @@ function initials(str) {
   const s = (str || '?').trim();
   return s ? s[0].toUpperCase() : '?';
 }
+// Сообщение состоит только из эмодзи (плюс пробелы) и не слишком длинное —
+// такие сообщения показываем крупно с анимацией, как в iMessage/WhatsApp
+function isEmojiOnlyText(text) {
+  const t = (text || '').trim();
+  if (!t || t.length > 24) return false;
+  if (!/\p{Extended_Pictographic}/u.test(t)) return false; // должен быть хотя бы один настоящий эмодзи-глиф
+  const stripped = t.replace(/[\p{Extended_Pictographic}\p{Emoji_Component}\u{FE0F}\u{200D}\s]/gu, '');
+  return stripped.length === 0;
+}
+function renderAvatarEl(el, displayName, emoji) {
+  el.style.background = avatarColor(displayName);
+  if (emoji) {
+    el.textContent = emoji;
+    el.classList.add('has-emoji');
+  } else {
+    el.textContent = initials(displayName);
+    el.classList.remove('has-emoji');
+  }
+}
 function formatTime(date) {
   return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
 }
@@ -2122,8 +2230,7 @@ function addChatMessage(msg) {
 
     const avatar = document.createElement('div');
     avatar.className = 'msg-avatar';
-    avatar.style.background = avatarColor(displayName);
-    avatar.textContent = initials(displayName);
+    renderAvatarEl(avatar, displayName, msg.avatar);
 
     const bodyEl = document.createElement('div');
     bodyEl.className = 'msg-body';
@@ -2138,6 +2245,8 @@ function addChatMessage(msg) {
     const textEl = document.createElement('div');
     textEl.className = 'msg-text';
     textEl.textContent = msg.text;
+    const isBigEmoji = !!msg.id && !msg.image && !msg.gifUrl && !msg.replyTo && isEmojiOnlyText(msg.text);
+    if (isBigEmoji) textEl.classList.add('msg-text-emoji-only');
 
     const timeEl = document.createElement('div');
     timeEl.className = 'msg-time';
@@ -2152,7 +2261,7 @@ function addChatMessage(msg) {
       replyBtn.className = 'msg-react-btn';
       replyBtn.setAttribute('aria-label', 'Ответить на сообщение');
       replyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 17l-5-5 5-5M4 12h10a5 5 0 015 5v1"/></svg>';
-      replyBtn.onclick = (ev) => { ev.stopPropagation(); startReply(msg.id, displayName, msg.text, !!msg.image); };
+      replyBtn.onclick = (ev) => { ev.stopPropagation(); startReply(msg.id, displayName, msg.text, !!msg.image, !!msg.gifUrl); };
       line.appendChild(replyBtn);
     }
 
@@ -2173,7 +2282,7 @@ function addChatMessage(msg) {
       quote.className = 'msg-quote';
       quote.innerHTML = '<div class="bar"></div><div class="info"><div class="to-name"></div><div class="to-text"></div></div>';
       quote.querySelector('.to-name').textContent = msg.replyTo.name || 'Гость';
-      quote.querySelector('.to-text').textContent = msg.replyTo.text || (msg.replyTo.image ? '📷 Фото' : '');
+      quote.querySelector('.to-text').textContent = msg.replyTo.text || (msg.replyTo.gif ? '🎞 GIF' : (msg.replyTo.image ? '📷 Фото' : ''));
       quote.onclick = (ev) => { ev.stopPropagation(); jumpToMessage(msg.replyTo.id); };
       bodyEl.appendChild(quote);
     }
@@ -2190,13 +2299,35 @@ function addChatMessage(msg) {
       bodyEl.appendChild(img);
     }
 
+    if (msg.gifUrl) {
+      const wrap = document.createElement('div');
+      wrap.className = 'msg-gif';
+      wrap.style.cssText = 'display:inline-block; margin-top:4px;';
+      const img = document.createElement('img');
+      img.className = 'msg-image';
+      img.src = msg.gifUrl;
+      img.loading = 'lazy';
+      img.alt = 'GIF';
+      img.onclick = () => openImageLightbox(msg.gifUrl);
+      const badge = document.createElement('span');
+      badge.className = 'gif-badge';
+      badge.textContent = 'GIF';
+      wrap.appendChild(img);
+      wrap.appendChild(badge);
+      bodyEl.appendChild(wrap);
+    }
+
     if (msg.id) {
       bodyEl.addEventListener('dblclick', (ev) => {
         ev.preventDefault();
         window.getSelection && window.getSelection().removeAllRanges();
         sendMessageReaction(msg.id, '❤️');
-        triggerHeartBurst(bodyEl);
+        triggerEmojiBurst(bodyEl, '❤️');
       });
+    }
+
+    if (isBigEmoji) {
+      triggerEmojiBurst(bodyEl, Array.from(msg.text.trim())[0]);
     }
 
     row.appendChild(avatar);
@@ -2210,6 +2341,130 @@ function addChatMessage(msg) {
 }
 
 /* -----------------------------------------------------------
+   Профиль (имя + аватар — хранится локально, синхронизируется
+   с другими участниками комнаты через update-profile)
+   ----------------------------------------------------------- */
+const AVATAR_EMOJI_SET = ['😀','😎','🦊','🐼','🐶','🐱','🦁','🐸','👾','🎬','🍿','🔥','🌟','🧑‍🚀','🥷','🤖'];
+
+function openProfileEditor() {
+  const nameInput = document.getElementById('profileNameInput');
+  nameInput.value = name || '';
+
+  const grid = document.getElementById('avatarPickGrid');
+  grid.innerHTML = '';
+
+  const noneBtn = document.createElement('button');
+  noneBtn.type = 'button';
+  noneBtn.className = 'avatar-pick-btn emoji-pick-btn' + (!avatarEmoji ? ' selected' : '');
+  noneBtn.textContent = (name || '?').trim()[0]?.toUpperCase() || '?';
+  noneBtn.style.background = avatarColor(name || 'Гость');
+  noneBtn.style.color = '#fff';
+  noneBtn.onclick = () => selectAvatarEmoji('', grid);
+  grid.appendChild(noneBtn);
+
+  AVATAR_EMOJI_SET.forEach((em) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = em;
+    b.className = 'avatar-pick-btn emoji-pick-btn' + (avatarEmoji === em ? ' selected' : '');
+    b.onclick = () => selectAvatarEmoji(em, grid);
+    grid.appendChild(b);
+  });
+
+  renderAvatarEl(document.getElementById('profileAvatar'), name || 'Гость', avatarEmoji);
+  openSheet('profileOverlay');
+}
+
+function selectAvatarEmoji(em, grid) {
+  avatarEmoji = em;
+  grid.querySelectorAll('.avatar-pick-btn').forEach((b) => b.classList.remove('selected'));
+  const idx = em ? AVATAR_EMOJI_SET.indexOf(em) + 1 : 0;
+  grid.children[idx].classList.add('selected');
+  const currentName = document.getElementById('profileNameInput').value.trim() || name || 'Гость';
+  renderAvatarEl(document.getElementById('profileAvatar'), currentName, avatarEmoji);
+}
+
+function saveProfile() {
+  const newName = document.getElementById('profileNameInput').value.trim().slice(0, 20) || name || 'Гость';
+  name = newName;
+
+  try {
+    localStorage.setItem('wt_name', name);
+    localStorage.setItem('wt_avatar', avatarEmoji);
+  } catch (e) {}
+
+  renderAvatarEl(document.getElementById('profileAvatar'), name, avatarEmoji);
+
+  if (socket && room) {
+    socket.emit('update-profile', { room, name, avatar: avatarEmoji });
+  }
+
+  showToast('Профиль сохранён');
+  closeSheet('profileOverlay');
+}
+
+/* -----------------------------------------------------------
+   GIF-пикер (поиск через Tenor, проксируется сервером)
+   ----------------------------------------------------------- */
+function openGifPicker() {
+  document.getElementById('gifSearchInput').value = '';
+  loadGifs('');
+  openSheet('gifOverlay');
+  requestAnimationFrame(() => document.getElementById('gifSearchInput').focus());
+}
+
+function handleGifSearchInput() {
+  clearTimeout(gifSearchDebounce);
+  const q = document.getElementById('gifSearchInput').value.trim();
+  gifSearchDebounce = setTimeout(() => loadGifs(q), 350);
+}
+
+function loadGifs(query) {
+  const grid = document.getElementById('gifGrid');
+  grid.innerHTML = '<div class="gif-empty">Загрузка…</div>';
+  const url = query ? '/api/gif/search?q=' + encodeURIComponent(query) : '/api/gif/trending';
+
+  fetch(url)
+    .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+    .then(({ ok, data }) => {
+      if (!ok || data.error === 'no-key') {
+        grid.innerHTML = '<div class="gif-empty">Поиск GIF не настроен на сервере.<br>' +
+          'Владельцу сайта нужно добавить бесплатный ключ <b>TENOR_API_KEY</b> ' +
+          '(см. README проекта).</div>';
+        return;
+      }
+      const results = data.results || [];
+      if (!results.length) {
+        grid.innerHTML = '<div class="gif-empty">Ничего не найдено</div>';
+        return;
+      }
+      grid.innerHTML = '';
+      results.forEach((g) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        const img = document.createElement('img');
+        img.src = g.preview || g.url;
+        img.loading = 'lazy';
+        img.alt = g.title || 'GIF';
+        b.appendChild(img);
+        b.onclick = () => sendGif(g.url);
+        grid.appendChild(b);
+      });
+    })
+    .catch(() => {
+      grid.innerHTML = '<div class="gif-empty">Не удалось загрузить GIF. Проверьте соединение.</div>';
+    });
+}
+
+function sendGif(url) {
+  if (!url || !socket) return;
+  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif } : null;
+  socket.emit('chat-message', { room, gifUrl: url, replyTo: replyPayload });
+  clearReply();
+  closeSheet('gifOverlay');
+}
+
+/* -----------------------------------------------------------
    Emoji picker (lightweight, no external deps)
    ----------------------------------------------------------- */
 const EMOJI_SET = ['😀','😂','😍','😎','🔥','🎬','🍿','👍','❤️','😢','😱','🙌','👏','🤔','😴','🎉'];
@@ -2219,7 +2474,7 @@ function openEmojiPicker() {
   EMOJI_SET.forEach(em => {
     const b = document.createElement('button');
     b.textContent = em;
-    b.className = 'ripple-host';
+    b.className = 'ripple-host emoji-pick-btn';
     b.style.cssText = 'font-size:24px; background:var(--surface); border:1px solid var(--border); border-radius:12px; width:48px; height:48px; cursor:pointer;';
     b.onclick = () => {
       const input = document.getElementById('chatInput');
@@ -2239,7 +2494,7 @@ function setNav(which) {
   const roomRoot = document.getElementById('roomRoot');
   if (which === 'upload') { document.getElementById('fileInput').click(); return; }
   if (which === 'settings') { openSettings(); return; }
-  if (which === 'profile') { openSheet('profileOverlay'); return; }
+  if (which === 'profile') { openProfileEditor(); return; }
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (which === 'home') {
@@ -2368,7 +2623,7 @@ function notifyIncomingMessage(msg) {
   playPingSound();
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      new Notification((msg.name || 'Гость') + ' пишет', { body: msg.text, tag: 'wt-chat-' + room });
+      new Notification((msg.name || 'Гость') + ' пишет', { body: msg.text || (msg.gifUrl ? '🎞 GIF' : (msg.image ? '📷 Фото' : '')), tag: 'wt-chat-' + room });
     } catch (e) {}
   }
 }
@@ -2392,9 +2647,11 @@ function toggleMessageReactionPicker(messageId, btnEl) {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = em;
+      b.className = 'emoji-pick-btn';
       b.onclick = (ev) => {
         ev.stopPropagation();
         sendMessageReaction(messageId, em);
+        triggerEmojiBurst(row.querySelector('.msg-body'), em);
         picker.classList.remove('show');
       };
       picker.appendChild(b);
@@ -2411,15 +2668,17 @@ function sendMessageReaction(messageId, emoji) {
   socket.emit('message-reaction', { room, messageId, emoji });
 }
 
-function triggerHeartBurst(bodyEl) {
+function triggerEmojiBurst(bodyEl, emoji) {
   const old = bodyEl.querySelector('.msg-heart-burst');
   if (old) old.remove();
-  const heart = document.createElement('div');
-  heart.className = 'msg-heart-burst';
-  heart.textContent = '❤️';
-  bodyEl.appendChild(heart);
-  heart.addEventListener('animationend', () => heart.remove());
+  const burst = document.createElement('div');
+  burst.className = 'msg-heart-burst';
+  burst.textContent = emoji || '❤️';
+  bodyEl.appendChild(burst);
+  burst.addEventListener('animationend', () => burst.remove());
 }
+// Оставлено для обратной совместимости — сердце было единственной реакцией с анимацией
+function triggerHeartBurst(bodyEl) { triggerEmojiBurst(bodyEl, '❤️'); }
 
 function renderMessageReactions(row, reactions) {
   let box = row.querySelector('.msg-reactions');
@@ -2438,7 +2697,10 @@ function renderMessageReactions(row, reactions) {
     chip.className = 'reaction-chip' + (mine ? ' mine' : '');
     chip.title = users.join(', ');
     chip.innerHTML = `<span>${emoji}</span><span>${users.length}</span>`;
-    chip.onclick = () => sendMessageReaction(row.dataset.id, emoji);
+    chip.onclick = () => {
+      sendMessageReaction(row.dataset.id, emoji);
+      triggerEmojiBurst(row.querySelector('.msg-body'), emoji);
+    };
     box.appendChild(chip);
   });
 }
