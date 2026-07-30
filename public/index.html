@@ -101,6 +101,18 @@ input, select{ font-family:inherit; }
 @keyframes spin{ to{ transform:rotate(360deg); } }
 @keyframes ripple{ from{ transform:scale(0); opacity:.55; } to{ transform:scale(2.6); opacity:0; } }
 @keyframes float-glow{ 0%,100%{ transform:translate(0,0);} 50%{ transform:translate(2%,-3%);} }
+@keyframes hue-drift{ 0%,100%{ filter:hue-rotate(0deg);} 50%{ filter:hue-rotate(24deg);} }
+@keyframes aura-spin{ to{ transform:rotate(360deg); } }
+@keyframes shine-sweep{ 0%{ transform:translateX(-120%) skewX(-12deg);} 100%{ transform:translateX(220%) skewX(-12deg);} }
+@keyframes rec-pulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(255,90,118,.6);} 50%{ box-shadow:0 0 0 5px rgba(255,90,118,0);} }
+@keyframes grain-shift{
+  0%,100%{ transform:translate(0,0); }
+  10%{ transform:translate(-1%,-2%); }
+  30%{ transform:translate(2%,1%); }
+  50%{ transform:translate(-1%,3%); }
+  70%{ transform:translate(3%,-1%); }
+  90%{ transform:translate(-2%,2%); }
+}
 @keyframes typing-bounce{ 0%,80%,100%{ transform:translateY(0); opacity:.5;} 40%{ transform:translateY(-4px); opacity:1;} }
 @keyframes toast-in{ from{opacity:0; transform:translate(-50%,10px);} to{opacity:1; transform:translate(-50%,0);} }
 
@@ -213,6 +225,8 @@ input, select{ font-family:inherit; }
 }
 .bg-glow{
   position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+  background:radial-gradient(50vw 50vw at 82% 78%, rgba(66,211,146,.07), transparent 70%);
+  animation:hue-drift 18s ease-in-out infinite;
 }
 .bg-glow::before, .bg-glow::after{
   content:''; position:absolute; width:60vw; height:60vw; border-radius:50%;
@@ -220,6 +234,13 @@ input, select{ font-family:inherit; }
 }
 .bg-glow::before{ background:var(--bg-glow-a); top:-20%; left:-10%; }
 .bg-glow::after{ background:var(--bg-glow-b); bottom:-25%; right:-10%; animation-delay:-7s; }
+.grain-overlay{
+  position:fixed; inset:0; z-index:2; pointer-events:none;
+  opacity:.05; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size:180px 180px;
+  animation:grain-shift 1.4s steps(4) infinite;
+}
 
 .home-wrap{
   position:relative; z-index:1;
@@ -229,9 +250,9 @@ input, select{ font-family:inherit; }
   display:flex; flex-direction:column; align-items:center;
 }
 
-.logo-lockup{ text-align:center; margin-bottom:10px; animation:slide-up .6s var(--ease); }
+.logo-lockup{ text-align:center; margin-bottom:14px; animation:slide-up .6s var(--ease); }
 .logo-mark{
-  width:60px; height:60px; margin:0 auto 18px;
+  width:64px; height:64px; margin:0 auto 20px;
   border-radius:20px;
   display:flex; align-items:center; justify-content:center;
   background:linear-gradient(150deg, var(--surface-2), var(--card));
@@ -239,29 +260,53 @@ input, select{ font-family:inherit; }
   box-shadow:var(--shadow-md);
   position:relative;
 }
+.logo-mark::before{
+  content:''; position:absolute; inset:-3px; border-radius:23px; z-index:0;
+  background:conic-gradient(from 0deg, var(--primary), var(--accent), var(--success), var(--primary));
+  opacity:.55; filter:blur(1px);
+  animation:aura-spin 7s linear infinite;
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+          mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+}
 .logo-mark::after{
-  content:''; position:absolute; inset:0; border-radius:20px;
+  content:''; position:absolute; inset:1px; border-radius:19px;
   background:radial-gradient(circle at 30% 20%, rgba(201,168,78,.35), transparent 60%);
 }
 .logo-mark svg{ width:28px; height:28px; color:var(--primary); position:relative; z-index:1; }
+.logo-mark .rec-dot{
+  position:absolute; top:-3px; right:-3px; width:11px; height:11px; border-radius:50%; z-index:2;
+  background:var(--danger); border:2px solid var(--bg);
+  animation:rec-pulse 2.2s ease-in-out infinite;
+}
 
 .logo-lockup h1{
   font-family:var(--font-display);
   font-weight:800;
-  font-size:34px;
+  font-size:38px;
   letter-spacing:-.02em;
-  color:var(--text);
+  background:linear-gradient(100deg, #fff 20%, var(--primary) 55%, var(--accent) 85%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  background-size:220% 100%;
+  animation:shine-text 5s ease-in-out infinite;
 }
-.logo-lockup h1 .colon{ color:var(--accent); }
+.logo-lockup h1 .colon{ background:none; -webkit-text-fill-color:initial; color:var(--accent); }
 .logo-lockup .logo-sub{
-  margin-top:4px;
+  margin-top:10px; display:inline-flex; align-items:center; gap:6px;
   font-family:var(--font-display);
   font-weight:700;
-  font-size:15px;
+  font-size:13.5px;
   letter-spacing:.02em;
   color:var(--text-secondary);
+  background:var(--surface);
+  border:1px solid var(--border);
+  padding:6px 14px 6px 12px;
+  border-radius:var(--radius-full);
 }
-.logo-lockup .logo-sub .x{ color:var(--primary); padding:0 4px; }
+.logo-lockup .logo-sub .x{ color:var(--primary); font-size:11px; }
+@keyframes shine-text{
+  0%,100%{ background-position:0% 50%; }
+  50%{ background-position:100% 50%; }
+}
 
 .home-tagline{
   margin:14px 0 36px;
@@ -273,20 +318,55 @@ input, select{ font-family:inherit; }
   animation:slide-up .6s var(--ease) .05s both;
 }
 
+.home-card-halo{ position:relative; width:100%; animation:slide-up .6s var(--ease) .1s both; }
+.home-card-halo::before{
+  content:''; position:absolute; z-index:-1;
+  top:-30%; left:-15%; width:130%; height:160%;
+  background:conic-gradient(from 0deg, rgba(201,168,78,.35), rgba(124,92,255,.3), rgba(66,211,146,.25), rgba(201,168,78,.35));
+  filter:blur(50px);
+  animation:aura-spin 16s linear infinite;
+  opacity:.55;
+}
 .home-card{
+  position:relative;
   width:100%;
   background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0));
   backdrop-filter:blur(20px);
   -webkit-backdrop-filter:blur(20px);
   border:1px solid var(--border);
   border-radius:var(--radius-lg);
-  padding:26px 22px;
+  padding:22px 22px 26px;
   box-shadow:var(--shadow-lg);
-  animation:slide-up .6s var(--ease) .1s both;
+  overflow:hidden;
 }
+.film-strip{
+  display:flex; justify-content:space-between;
+  margin:-22px -22px 20px; padding:0 22px;
+  height:16px;
+  background-image:radial-gradient(circle, rgba(255,255,255,.16) 2px, transparent 2.4px);
+  background-size:16px 16px;
+  background-position:2px center;
+  background-repeat:repeat-x;
+  border-bottom:1px solid var(--border-soft);
+}
+
+.field-wrap{ position:relative; }
+.field-wrap svg{
+  position:absolute; left:14px; top:50%; transform:translateY(-50%);
+  width:16px; height:16px; color:var(--text-faint); pointer-events:none;
+}
+.home-card .field{ padding-left:42px; background:var(--surface); }
 
 .cta-row{ display:flex; gap:10px; margin-top:4px; }
 .cta-row .btn{ flex:1; }
+
+.btn-primary{ position:relative; overflow:hidden; }
+.btn-primary::after{
+  content:''; position:absolute; inset:0; width:40%;
+  background:linear-gradient(100deg, transparent, rgba(255,255,255,.45), transparent);
+  transform:translateX(-120%) skewX(-12deg);
+}
+.btn-primary:hover::after{ animation:shine-sweep 1s var(--ease); }
 
 .home-hint{
   margin-top:16px; text-align:center;
@@ -880,6 +960,7 @@ select{
 .typing-dots span:nth-child(3){ animation-delay:.3s; }
 
 .chat-input{
+  position:relative;
   flex-shrink:0; display:flex; align-items:center; gap:8px;
   padding:10px 12px calc(10px + env(safe-area-inset-bottom));
   background:var(--card);
@@ -891,6 +972,23 @@ select{
 }
 .chat-input .icon-btn{ background:var(--surface); }
 #micBtn.recording{ background:var(--danger, #e05252); color:#fff; }
+
+.chat-more-menu{
+  display:none;
+  position:absolute; left:12px; bottom:calc(100% + 8px);
+  background:rgba(29,29,37,.96);
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:8px; gap:4px;
+  box-shadow:var(--shadow-md);
+  z-index:20;
+  animation:slide-up-sm .16s var(--ease);
+}
+.chat-more-menu.show{ display:flex; }
+.chat-more-menu .icon-btn{ background:var(--surface); }
+.chat-more-menu-backdrop{ display:none; position:fixed; inset:0; z-index:19; }
+.chat-more-menu-backdrop.show{ display:block; }
 
 .voice-record-bar{
   display:none; align-items:center; gap:10px;
@@ -1138,6 +1236,7 @@ select{
 <body>
 
 <div class="bg-glow"></div>
+<div class="grain-overlay"></div>
 
 <!-- ============================================================
      Home / gate screen
@@ -1147,26 +1246,36 @@ select{
     <div class="logo-lockup">
       <div class="logo-mark">
         <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
+        <span class="rec-dot"></span>
       </div>
       <h1>Watch<span class="colon">:</span></h1>
       <div class="logo-sub">burado <span class="x">×</span> otroverr</div>
     </div>
     <p class="home-tagline">Создай комнату или войди в существующую — смотрите видео синхронно и общайтесь в чате в реальном времени.</p>
 
+    <div class="home-card-halo">
     <div class="home-card">
+      <div class="film-strip"></div>
       <div class="field-group">
         <label class="field-label" for="nameInput">Твоё имя</label>
-        <input class="field" type="text" id="nameInput" placeholder="Например, Влад" maxlength="20" />
+        <div class="field-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input class="field" type="text" id="nameInput" placeholder="Например, Влад" maxlength="20" />
+        </div>
       </div>
       <div class="field-group" style="margin-bottom:20px;">
         <label class="field-label" for="roomInput">Код комнаты</label>
-        <input class="field" type="text" id="roomInput" placeholder="friday-night" maxlength="30" />
+        <div class="field-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>
+          <input class="field" type="text" id="roomInput" placeholder="friday-night" maxlength="30" />
+        </div>
       </div>
       <div class="cta-row">
         <button class="btn btn-primary btn-lg ripple-host" onclick="createRoom(event)">Создать комнату</button>
         <button class="btn btn-ghost btn-lg ripple-host" onclick="joinRoom(event)">Войти в комнату</button>
       </div>
       <div class="home-hint">Файл можно будет загрузить уже внутри комнаты</div>
+    </div>
     </div>
 
     <div class="recent-wrap" id="recentWrap" style="display:none;">
@@ -1300,23 +1409,27 @@ select{
           <button type="button" onclick="clearChatAttachment()" aria-label="Убрать картинку">✕</button>
         </div>
         <div class="mention-dropdown" id="mentionDropdown"></div>
+        <div class="chat-more-menu-backdrop" id="chatMoreMenuBackdrop" onclick="closeChatMoreMenu()"></div>
         <div class="chat-input" id="chatInputBar">
-          <button class="icon-btn" id="attachBtn" onmousedown="event.preventDefault()" onclick="document.getElementById('chatImageInput').click()" aria-label="Прикрепить фото">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5-9 9"/></svg>
-          </button>
-          <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="handleChatImageSelect(event)" />
-          <button class="icon-btn" id="gifBtn" onmousedown="event.preventDefault()" onclick="openGifPicker()" aria-label="GIF" style="font-size:11px; font-weight:800; letter-spacing:.02em;">GIF</button>
-          <button class="icon-btn" id="gameBtn" onmousedown="event.preventDefault()" onclick="openTttSheet()" aria-label="Игра" style="font-size:16px;">🎮</button>
-          <button class="icon-btn" id="aiAskBtn" onmousedown="event.preventDefault()" onclick="promptAiAsk()" aria-label="Спросить AI" title="Спросить AI (актёры, треки, объяснения по сюжету)" style="font-size:15px;">🤖</button>
-          <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
-          </button>
+          <div class="chat-more-menu" id="chatMoreMenu">
+            <button class="icon-btn" id="attachBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); document.getElementById('chatImageInput').click()" aria-label="Прикрепить фото">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5-9 9"/></svg>
+            </button>
+            <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="handleChatImageSelect(event)" />
+            <button class="icon-btn" id="gifBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); openGifPicker()" aria-label="GIF" style="font-size:11px; font-weight:800; letter-spacing:.02em;">GIF</button>
+            <button class="icon-btn" id="gameBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); openTttSheet()" aria-label="Игра" style="font-size:16px;">🎮</button>
+            <button class="icon-btn" id="aiAskBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); promptAiAsk()" aria-label="Спросить AI" title="Спросить AI (актёры, треки, объяснения по сюжету)" style="font-size:15px;">🤖</button>
+            <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); openEmojiPicker()" aria-label="Эмодзи">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
+            </button>
+            <button class="icon-btn" id="micBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); startVoiceRecording()" aria-label="Голосовое сообщение">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
+            </button>
+          </div>
+          <button class="icon-btn" id="chatMoreBtn" onmousedown="event.preventDefault()" onclick="toggleChatMoreMenu()" aria-label="Ещё" style="font-size:18px; font-weight:800; letter-spacing:1px;">⋯</button>
           <input class="field" type="text" id="chatInput" placeholder="Написать... (Ctrl+V — вставить скриншот)" autocomplete="off" enterkeyhint="send"
                  onkeydown="if(event.key==='Enter') sendChat(); if(event.key==='Escape') document.getElementById('mentionDropdown').classList.remove('show');"
                  oninput="handleTyping()" onblur="setTimeout(() => document.getElementById('mentionDropdown').classList.remove('show'), 150)" />
-          <button class="icon-btn" id="micBtn" onmousedown="event.preventDefault()" onclick="startVoiceRecording()" aria-label="Голосовое сообщение">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
-          </button>
           <button type="button" class="send-btn ripple-host" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </button>
@@ -1338,35 +1451,23 @@ select{
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
         <span>Экран</span>
       </button>
+      <button class="nav-item" id="navUpload" onclick="setNav('upload')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+        <span>Загрузить</span>
+      </button>
       <button class="nav-item" id="navChat" onclick="setNav('chat')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
         <span>Чат</span>
       </button>
-      <button class="nav-item" id="navMore" onclick="setNav('more')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
-        <span>Ещё</span>
+      <button class="nav-item" id="navSettings" onclick="setNav('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>Настройки</span>
+      </button>
+      <button class="nav-item" id="navProfile" onclick="setNav('profile')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Профиль</span>
       </button>
     </div>
-  </div>
-</div>
-
-<!-- More sheet: загрузка видео, настройки, профиль — всё, что не влезло в нижнюю панель -->
-<div class="overlay" id="moreMenuOverlay" onclick="if(event.target===this) closeSheet('moreMenuOverlay')">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">Ещё <button class="icon-btn" onclick="closeSheet('moreMenuOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
-    <button class="btn btn-ghost btn-block ripple-host more-menu-item" onclick="closeSheet('moreMenuOverlay'); document.getElementById('fileInput').click();">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-      Загрузить видео
-    </button>
-    <button class="btn btn-ghost btn-block ripple-host more-menu-item" onclick="closeSheet('moreMenuOverlay'); openSettings();">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-      Настройки комнаты
-    </button>
-    <button class="btn btn-ghost btn-block ripple-host more-menu-item" onclick="closeSheet('moreMenuOverlay'); openProfileEditor();">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      Профиль
-    </button>
   </div>
 </div>
 
@@ -3444,7 +3545,9 @@ function renderTttState(state) {
    ----------------------------------------------------------- */
 function setNav(which) {
   const roomRoot = document.getElementById('roomRoot');
-  if (which === 'more') { openSheet('moreMenuOverlay'); return; }
+  if (which === 'upload') { document.getElementById('fileInput').click(); return; }
+  if (which === 'settings') { openSettings(); return; }
+  if (which === 'profile') { openProfileEditor(); return; }
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (which === 'home') {
@@ -3457,6 +3560,18 @@ function setNav(which) {
     document.getElementById('chatInput').focus();
     scrollChatToBottom(true);
   }
+}
+
+function toggleChatMoreMenu() {
+  const menu = document.getElementById('chatMoreMenu');
+  const backdrop = document.getElementById('chatMoreMenuBackdrop');
+  const show = !menu.classList.contains('show');
+  menu.classList.toggle('show', show);
+  backdrop.classList.toggle('show', show);
+}
+function closeChatMoreMenu() {
+  document.getElementById('chatMoreMenu').classList.remove('show');
+  document.getElementById('chatMoreMenuBackdrop').classList.remove('show');
 }
 
 function openSettings() { openSheet('settingsOverlay'); }
