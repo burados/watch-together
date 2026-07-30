@@ -589,6 +589,17 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
   border-top-color:var(--primary);
   animation:spin .8s linear infinite;
 }
+.yt-unmute-btn{
+  position:absolute; left:50%; bottom:16px; transform:translateX(-50%);
+  z-index:6; display:none; align-items:center; gap:7px;
+  padding:9px 16px; border-radius:var(--radius-full); border:0; cursor:pointer;
+  background:rgba(0,0,0,.72); backdrop-filter:blur(6px); color:#fff;
+  font-size:12.5px; font-weight:700; box-shadow:var(--shadow-lg);
+  animation:fade-in .2s var(--ease);
+}
+.yt-unmute-btn.show{ display:flex; }
+.yt-unmute-btn svg{ width:16px; height:16px; flex-shrink:0; }
+.video-wrap:fullscreen .yt-unmute-btn{ bottom:26px; }
 
 /* -----------------------------------------------------------
    Message reactions
@@ -1465,6 +1476,10 @@ select{
                этим плеером можно управлять программно: play/pause/seek —
                и события транслируются остальным зрителям как настоящая синхронизация. -->
           <div id="ytPlayer" class="yt-player" style="display:none;"></div>
+          <button type="button" class="yt-unmute-btn" id="ytUnmuteBtn" onclick="unmuteYoutube()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M23 9l-6 6M17 9l6 6"/></svg>
+            Включить звук
+          </button>
           <div class="stream-frame-bar" id="ytFrameBar" style="display:none;">
             <span id="ytFrameFrom"></span>
             <button type="button" onclick="openYoutubeLink()">Открыть на YouTube ↗</button>
@@ -2064,7 +2079,10 @@ function setupSocket() {
       const seekWhenReady = setInterval(() => {
         if (ytPlayerInstance && typeof ytPlayerInstance.seekTo === 'function') {
           clearInterval(seekWhenReady);
-          try { ytPlayerInstance.seekTo(state.currentTime || 0, true); if (!state.playing) ytPlayerInstance.pauseVideo(); } catch (e) {}
+          try {
+            ytPlayerInstance.seekTo(state.currentTime || 0, true);
+            if (state.playing) ytPlayerInstance.playVideo(); else ytPlayerInstance.pauseVideo();
+          } catch (e) {}
         }
       }, 300);
     } else if (state.streamLink) {
@@ -2100,9 +2118,13 @@ function setupSocket() {
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
       ytPlayerInstance.playVideo();
+      // Подстраховка: если даже приглушённый автозапуск почему-то не
+      // сработал (очень редкий случай), не оставляем спиннер загрузки
+      // висеть вечно — снимаем его через пару секунд в любом случае.
+      setTimeout(() => document.getElementById('videoLoading').classList.remove('show'), 2500);
     } else {
       player.currentTime = time;
-      player.play();
+      player.play().catch(() => {});
     }
     setTimeout(() => syncing = false, 300);
   });
@@ -2400,6 +2422,7 @@ function hideYoutubeFrame() {
   document.getElementById('ytPlayer').style.display = 'none';
   document.getElementById('ytFrameBar').style.display = 'none';
   document.getElementById('ytFramePeek').classList.remove('show');
+  document.getElementById('ytUnmuteBtn').classList.remove('show');
   if (ytPlayerInstance) {
     try { ytPlayerInstance.stopVideo(); } catch (e) {}
   }
@@ -2417,6 +2440,17 @@ function showYtFrameBar() {
 
 function openYoutubeLink() {
   if (currentYoutubeVideo) window.open(currentYoutubeVideo, '_blank', 'noopener');
+}
+
+// Плеер всегда стартует без звука (см. showYoutubeVideo) — иначе браузер
+// на устройствах других зрителей молча блокирует автозапуск со звуком,
+// когда play/pause/перемотка приходит по синхронизации, а не от прямого
+// тапа человека. Каждый зритель включает звук у себя сам, одним тапом —
+// это уже собственный жест пользователя, браузер его не блокирует.
+function unmuteYoutube() {
+  if (!ytPlayerInstance) return;
+  try { ytPlayerInstance.unMute(); } catch (e) {}
+  document.getElementById('ytUnmuteBtn').classList.remove('show');
 }
 
 function showYoutubeVideo(url, from, notify) {
@@ -2452,6 +2486,8 @@ function showYoutubeVideo(url, from, notify) {
 
   loadYoutubeApi(() => {
     if (ytPlayerInstance) {
+      ytPlayerInstance.mute();
+      document.getElementById('ytUnmuteBtn').classList.add('show');
       ytPlayerInstance.loadVideoById(videoId);
       return;
     }
@@ -2466,6 +2502,13 @@ function showYoutubeVideo(url, from, notify) {
       events: {
         onReady: () => {
           loading.classList.remove('show');
+          // Стартуем без звука: у зрителей (не у того, кто нажал play)
+          // play/pause/seek приходят программно через синхронизацию, а не
+          // от прямого тапа — с включённым звуком браузер такой автозапуск
+          // молча блокирует, и видео зависает на превью+"Загрузка".
+          // Приглушённый автозапуск браузеры разрешают всегда.
+          try { ytPlayerInstance.mute(); } catch (e) {}
+          document.getElementById('ytUnmuteBtn').classList.add('show');
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: 'Смотрим вместе',
