@@ -977,6 +977,8 @@ select{
 .nav-item span{ font-size:9.5px; font-weight:700; letter-spacing:.02em; }
 .nav-item:active{ transform:scale(.92); }
 .nav-item.active{ color:var(--primary); background:var(--primary-soft); }
+.more-menu-item{ justify-content:flex-start; margin-top:8px; }
+.more-menu-item svg{ width:18px; height:18px; flex-shrink:0; }
 
 /* =============================================================
    6. Modals / popovers / toast
@@ -1336,23 +1338,35 @@ select{
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
         <span>Экран</span>
       </button>
-      <button class="nav-item" id="navUpload" onclick="setNav('upload')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-        <span>Загрузить</span>
-      </button>
       <button class="nav-item" id="navChat" onclick="setNav('chat')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
         <span>Чат</span>
       </button>
-      <button class="nav-item" id="navSettings" onclick="setNav('settings')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-        <span>Настройки</span>
-      </button>
-      <button class="nav-item" id="navProfile" onclick="setNav('profile')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Профиль</span>
+      <button class="nav-item" id="navMore" onclick="setNav('more')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+        <span>Ещё</span>
       </button>
     </div>
+  </div>
+</div>
+
+<!-- More sheet: загрузка видео, настройки, профиль — всё, что не влезло в нижнюю панель -->
+<div class="overlay" id="moreMenuOverlay" onclick="if(event.target===this) closeSheet('moreMenuOverlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Ещё <button class="icon-btn" onclick="closeSheet('moreMenuOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <button class="btn btn-ghost btn-block ripple-host more-menu-item" onclick="closeSheet('moreMenuOverlay'); document.getElementById('fileInput').click();">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+      Загрузить видео
+    </button>
+    <button class="btn btn-ghost btn-block ripple-host more-menu-item" onclick="closeSheet('moreMenuOverlay'); openSettings();">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Настройки комнаты
+    </button>
+    <button class="btn btn-ghost btn-block ripple-host more-menu-item" onclick="closeSheet('moreMenuOverlay'); openProfileEditor();">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Профиль
+    </button>
   </div>
 </div>
 
@@ -3430,9 +3444,7 @@ function renderTttState(state) {
    ----------------------------------------------------------- */
 function setNav(which) {
   const roomRoot = document.getElementById('roomRoot');
-  if (which === 'upload') { document.getElementById('fileInput').click(); return; }
-  if (which === 'settings') { openSettings(); return; }
-  if (which === 'profile') { openProfileEditor(); return; }
+  if (which === 'more') { openSheet('moreMenuOverlay'); return; }
 
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (which === 'home') {
