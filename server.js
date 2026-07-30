@@ -385,12 +385,22 @@ const rooms = {}; // roomId -> { video, currentTime, playing, reactions, cleanup
 // Через сколько минут после того, как комната опустела, удалять её из памяти
 const ROOM_EMPTY_TTL_MS = (parseInt(process.env.ROOM_EMPTY_TTL_MINUTES, 10) || 15) * 60 * 1000;
 
+// Сколько ждать перед тем, как объявить в чате, что человек вышел.
+// socket.io переподключается автоматически при обрыве интернета/сворачивании
+// вкладки на телефоне — без этой паузы каждый такой обрыв выглядел как
+// "вышел(ла)" сразу за которым "присоединился(-ась)".
+const RECONNECT_GRACE_MS = (parseInt(process.env.RECONNECT_GRACE_SECONDS, 10) || 8) * 1000;
+
+// Сколько последних сообщений чата держим в памяти на комнату, чтобы
+// отдавать их новым/переподключившимся участникам (см. broadcastChatMessage)
+const CHAT_HISTORY_LIMIT = parseInt(process.env.CHAT_HISTORY_LIMIT, 10) || 200;
+
 // Планирует удаление комнаты из памяти, если она останется пустой
 function scheduleRoomCleanup(room) {
   if (!rooms[room]) return;
   if (rooms[room].cleanupTimer) clearTimeout(rooms[room].cleanupTimer);
   rooms[room].cleanupTimer = setTimeout(() => {
-    const count = io.sockets.adapter.rooms.get(room)?.size || 0;
+    const count = rooms[room]?.members?.size || 0;
     if (count === 0) {
       delete rooms[room];
       delete aiCooldownByRoom[room];
@@ -544,18 +554,30 @@ function tttPublicState(game) {
 
 // Список отображаемых имён всех, кто сейчас в комнате (для автодополнения @упоминаний)
 function getRoomNames(room) {
-  const socketIds = io.sockets.adapter.rooms.get(room);
-  if (!socketIds) return [];
+  const members = rooms[room]?.members;
+  if (!members) return [];
   const names = new Set();
-  socketIds.forEach((id) => {
-    const s = io.sockets.sockets.get(id);
-    if (s?.data?.name) names.add(s.data.name);
-  });
+  members.forEach((m) => { if (m.name) names.add(m.name); });
   return Array.from(names);
 }
 
 function broadcastRoomUsers(room) {
   io.to(room).emit('room-users', { names: getRoomNames(room) });
+}
+
+// Рассылает сообщение чата всей комнате и сохраняет его в скользящей истории
+// комнаты — чтобы при случайном закрытии вкладки/приложения или обрыве связи
+// сообщения не терялись: новый или переподключившийся участник получает их
+// вместе с room-state (см. join-room).
+function broadcastChatMessage(room, msg) {
+  if (!rooms[room]) return;
+  const stored = { ...msg, time: msg.time || Date.now() };
+  if (!rooms[room].chatHistory) rooms[room].chatHistory = [];
+  rooms[room].chatHistory.push(stored);
+  if (rooms[room].chatHistory.length > CHAT_HISTORY_LIMIT) {
+    rooms[room].chatHistory = rooms[room].chatHistory.slice(-CHAT_HISTORY_LIMIT);
+  }
+  io.to(room).emit('chat-message', stored);
 }
 
 // Достаёт из текста реально упомянутых участников комнаты (регистр не важен),
@@ -576,16 +598,22 @@ function extractMentions(text, roomNames) {
 io.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('join-room', ({ room, name, avatar, avatarPhoto }) => {
+  socket.on('join-room', ({ room, name, avatar, avatarPhoto, clientId }) => {
     currentRoom = room;
     socket.join(room);
     socket.data.name = name || 'Гость';
     socket.data.avatar = (avatar || '').toString().trim().slice(0, 8);
     socket.data.avatarPhoto = isValidAvatarPhoto(avatarPhoto) ? avatarPhoto : '';
+    // Стабильный id браузера/устройства, переживающий переподключения.
+    // Старые клиенты без него просто получают socket.id — без защиты от
+    // "мигания" при реконнекте, но без ошибок.
+    socket.data.clientId = (clientId && String(clientId).slice(0, 64)) || socket.id;
 
     if (!rooms[room]) {
-      rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null, youtubeVideo: null, aiHistory: [], ttt: null };
+      rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null, youtubeVideo: null, aiHistory: [], ttt: null, members: new Map(), chatHistory: [] };
     }
+    if (!rooms[room].members) rooms[room].members = new Map(); // на случай комнаты, созданной до обновления
+    if (!rooms[room].chatHistory) rooms[room].chatHistory = [];
 
     // Если комната была запланирована к удалению (опустела), отменяем удаление —
     // кто-то вернулся
@@ -604,18 +632,39 @@ io.on('connection', (socket) => {
       streamLink: rooms[room].streamLink,
       externalVideo: rooms[room].externalVideo,
       youtubeVideo: rooms[room].youtubeVideo,
-      ttt: tttPublicState(rooms[room].ttt)
+      ttt: tttPublicState(rooms[room].ttt),
+      chatHistory: rooms[room].chatHistory.map((m) => (
+        m.id ? { ...m, reactions: rooms[room].reactions[m.id] || {} } : m
+      ))
     });
 
     const existingTttSymbol = rooms[room].ttt?.players?.[socket.id];
     if (existingTttSymbol) socket.emit('ttt-you', { symbol: existingTttSymbol });
 
-    io.to(room).emit('chat-message', {
-      system: true,
-      text: `${socket.data.name} присоединился(-ась)`
+    // Если у этого clientId уже была запись — это либо переподключение после
+    // обрыва (тогда есть leaveTimer, который надо отменить), либо просто
+    // открытая вторая вкладка. В обоих случаях это не "новый человек" —
+    // не объявляем повторное присоединение в чате.
+    const existingMember = rooms[room].members.get(socket.data.clientId);
+    if (existingMember?.leaveTimer) {
+      clearTimeout(existingMember.leaveTimer);
+    }
+    rooms[room].members.set(socket.data.clientId, {
+      name: socket.data.name,
+      avatar: socket.data.avatar,
+      avatarPhoto: socket.data.avatarPhoto,
+      socketId: socket.id,
+      leaveTimer: null
     });
 
-    io.to(room).emit('user-count', io.sockets.adapter.rooms.get(room)?.size || 1);
+    if (!existingMember) {
+      broadcastChatMessage(room, {
+        system: true,
+        text: `${socket.data.name} присоединился(-ась)`
+      });
+    }
+
+    io.to(room).emit('user-count', rooms[room].members.size);
     broadcastRoomUsers(room);
   });
 
@@ -709,7 +758,7 @@ io.on('connection', (socket) => {
     socket.data.avatar = newAvatar;
     socket.data.avatarPhoto = isValidAvatarPhoto(avatarPhoto) ? avatarPhoto : '';
     if (newName !== oldName) {
-      io.to(room).emit('chat-message', { system: true, text: `${oldName} теперь известен(на) как ${newName}` });
+      broadcastChatMessage(room, { system: true, text: `${oldName} теперь известен(на) как ${newName}` });
     }
     broadcastRoomUsers(room);
   });
@@ -743,9 +792,9 @@ io.on('connection', (socket) => {
     const safeVoiceDuration = safeVoice ? Math.min(Math.max(parseInt(voiceDuration, 10) || 0, 0), 600) : 0;
     if (!trimmedText && !safeImage && !safeGifUrl && !safeVoice) return; // совсем пустое сообщение — игнорируем
 
-    // "Ответ на сообщение" — сервер не хранит историю чата, поэтому просто
-    // ретранслирует то, что прислал клиент (у него это сообщение уже есть на
-    // экране), с обрезкой длины на всякий случай
+    // "Ответ на сообщение" — вместо поиска оригинала по id (истории пока не
+    // было бы под рукой в момент отправки) просто ретранслируем то, что
+    // прислал клиент, с обрезкой длины на всякий случай
     let safeReplyTo = null;
     if (replyTo && typeof replyTo === 'object') {
       const replyId = String(replyTo.id || '').slice(0, 100);
@@ -759,12 +808,12 @@ io.on('connection', (socket) => {
       }
     }
 
-    if (!rooms[room]) rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null, youtubeVideo: null, aiHistory: [] };
+    if (!rooms[room]) rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null, youtubeVideo: null, aiHistory: [], ttt: null, members: new Map(), chatHistory: [] };
     const id = randomUUID();
     rooms[room].reactions[id] = {};
     const mentions = extractMentions(trimmedText, getRoomNames(room));
 
-    io.to(room).emit('chat-message', {
+    broadcastChatMessage(room, {
       id,
       system: false,
       name: socket.data.name,
@@ -779,9 +828,8 @@ io.on('connection', (socket) => {
       mentions
     });
 
-    // Держим короткую скользящую историю текстовых реплик — только для
-    // контекста AI-помощника (не для восстановления чата при реконнекте,
-    // это по-прежнему целиком на клиенте).
+    // Держим короткую скользящую историю текстовых реплик — отдельно от
+    // chatHistory выше, только для контекста AI-помощника (см. askAi)
     if (trimmedText) {
       if (!rooms[room].aiHistory) rooms[room].aiHistory = [];
       rooms[room].aiHistory.push({ name: socket.data.name || 'Гость', text: trimmedText });
@@ -828,7 +876,7 @@ io.on('connection', (socket) => {
         }
         const aiId = randomUUID();
         rooms[room].reactions[aiId] = {};
-        io.to(room).emit('chat-message', {
+        broadcastChatMessage(room, {
           id: aiId,
           system: false,
           ai: true,
@@ -929,21 +977,36 @@ io.on('connection', (socket) => {
       io.to(currentRoom).emit('ttt-state', tttPublicState(game));
     }
 
-    if (currentRoom) {
-      io.to(currentRoom).emit('chat-message', {
+    if (!currentRoom || !rooms[currentRoom]) return;
+
+    const room = currentRoom;
+    const clientId = socket.data.clientId;
+    const member = rooms[room].members?.get(clientId);
+
+    // Если под этим clientId уже числится другой (новый) socket.id — значит
+    // человек успел переподключиться раньше, чем сработал disconnect этого,
+    // устаревшего сокета. Ничего не делаем, он и так на месте.
+    if (!member || member.socketId !== socket.id) return;
+
+    // Не объявляем уход сразу: обрыв интернета или сворачивание вкладки на
+    // телефоне почти всегда заканчивается автопереподключением socket.io
+    // через пару секунд. Даём паузу RECONNECT_GRACE_MS — если clientId
+    // вернётся за это время, join-room отменит этот таймер и в чате ничего
+    // не появится.
+    member.leaveTimer = setTimeout(() => {
+      rooms[room].members.delete(clientId);
+      broadcastChatMessage(room, {
         system: true,
-        text: `${socket.data.name || 'Гость'} вышел(ла)`
+        text: `${member.name || 'Гость'} вышел(ла)`
       });
-      // Считаем оставшихся уже после того, как этот сокет вышел из комнаты
-      // (socket.io делает это автоматически перед событием disconnect)
-      const count = io.sockets.adapter.rooms.get(currentRoom)?.size || 0;
-      io.to(currentRoom).emit('user-count', count);
-      broadcastRoomUsers(currentRoom);
+      const count = rooms[room].members.size;
+      io.to(room).emit('user-count', count);
+      broadcastRoomUsers(room);
 
       if (count === 0) {
-        scheduleRoomCleanup(currentRoom);
+        scheduleRoomCleanup(room);
       }
-    }
+    }, RECONNECT_GRACE_MS);
   });
 });
 
