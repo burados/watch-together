@@ -3,7 +3,7 @@
 // Кэшируем только статическую оболочку. Видео, сокеты и API — всегда напрямую из сети,
 // их кэшировать нельзя (список видео и состояние комнаты постоянно меняются).
 
-const CACHE_NAME = 'watch-together-shell-v1';
+const CACHE_NAME = 'watch-together-shell-v2'; // версия увеличена, чтобы старый кэш точно сбросился после этого обновления
 const SHELL_FILES = [
   '/',
   '/manifest.json',
@@ -40,7 +40,27 @@ self.addEventListener('fetch', (event) => {
     return; // не вызываем event.respondWith — запрос уйдёт в сеть как обычно
   }
 
-  // Для остальной статики: кэш-сначала, с фоновым обновлением
+  // Саму страницу (HTML-навигацию) всегда берём из сети в первую очередь.
+  // Раньше она отдавалась "кэш-сначала", из-за чего после каждого деплоя
+  // люди ещё долго видели предыдущую версию сайта. Кэш теперь только
+  // запасной вариант на случай, если сети совсем нет (офлайн).
+  if (event.request.mode === 'navigate' || url.pathname === '/') {
+    event.respondWith(
+      fetch(event.request)
+        .then((resp) => {
+          if (resp && resp.status === 200) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return resp;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Остальная статика (иконки, манифест и т.п.): кэш-сначала с фоновым
+  // обновлением — тут актуальность не критична.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)

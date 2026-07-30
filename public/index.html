@@ -1730,6 +1730,22 @@ let avatarEmoji = '';
 try { avatarEmoji = localStorage.getItem('wt_avatar') || ''; } catch (e) {}
 let avatarPhoto = ''; // имя файла на сервере (uploads/avatars), не полный путь
 try { avatarPhoto = localStorage.getItem('wt_avatar_photo') || ''; } catch (e) {}
+
+// Стабильный идентификатор этого браузера/устройства, переживающий
+// переподключения socket.io (обрыв интернета, сворачивание вкладки на
+// телефоне и т.п.). socket.id при этом каждый раз новый, поэтому без
+// clientId сервер не может отличить "человек вернулся" от "зашёл новый
+// человек" — из-за этого в чате мелькало "вышел(ла)"/"присоединился(-ась)".
+let clientId = '';
+try {
+  clientId = localStorage.getItem('wt_client_id') || '';
+  if (!clientId) {
+    clientId = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    localStorage.setItem('wt_client_id', clientId);
+  }
+} catch (e) {
+  clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 function avatarPhotoUrl(filename) { return filename ? '/avatars/' + filename : ''; }
 let gifSearchDebounce = null;
 let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
@@ -2007,7 +2023,7 @@ function setupSocket() {
   // receiving chat/sync until the user manually re-entered the room.
   let hasConnectedBefore = false;
   socket.on('connect', () => {
-    socket.emit('join-room', { room, name, avatar: avatarEmoji, avatarPhoto });
+    socket.emit('join-room', { room, name, avatar: avatarEmoji, avatarPhoto, clientId });
     loadVideoList();
     if (hasConnectedBefore) showToast('Соединение восстановлено');
     hasConnectedBefore = true;
@@ -2020,7 +2036,21 @@ function setupSocket() {
     showToast('Соединение потеряно, переподключение…');
   });
 
+  // Сообщения чата, которые пришли до открытия комнаты (см. chatHistory в
+  // room-state) — рисуем их только один раз за загрузку страницы. При
+  // обычном переподключении (без перезагрузки страницы) сообщения уже
+  // на экране, и повторный room-state не должен их дублировать.
+  let chatHistoryLoaded = false;
+
   socket.on('room-state', (state) => {
+    if (!chatHistoryLoaded) {
+      chatHistoryLoaded = true;
+      if (Array.isArray(state.chatHistory) && state.chatHistory.length) {
+        state.chatHistory.forEach((m) => addChatMessage(m, true));
+        const box = document.getElementById('chatMessages');
+        if (box) box.scrollTop = box.scrollHeight;
+      }
+    }
     if (state.video) {
       showVideo(state.video, false);
       player.currentTime = state.currentTime || 0;
@@ -3283,10 +3313,10 @@ function scrollChatToBottom(smooth) {
   box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
 }
 
-function addChatMessage(msg) {
+function addChatMessage(msg, bulkLoad) {
   const box = document.getElementById('chatMessages');
   const inner = document.getElementById('chatMessagesInner');
-  const wasNearBottom = isNearBottom(box);
+  const wasNearBottom = bulkLoad ? true : isNearBottom(box);
 
   if (msg.system) {
     const div = document.createElement('div');
@@ -3325,7 +3355,7 @@ function addChatMessage(msg) {
 
     const timeEl = document.createElement('div');
     timeEl.className = 'msg-time';
-    timeEl.textContent = formatTime(new Date());
+    timeEl.textContent = formatTime(msg.time ? new Date(msg.time) : new Date());
 
     if (msg.text) line.appendChild(textEl);
     line.appendChild(timeEl);
@@ -3925,11 +3955,19 @@ function playPingSound() {
 }
 function notifyIncomingMessage(msg) {
   const isMention = !!(msg.mentions && msg.mentions.some((m) => m === name));
+  const isReplyToMe = !!(msg.replyTo && msg.replyTo.name === name);
 
-  if (isMention && !document.hidden) {
-    // Приложение открыто — упоминание всё равно заметно нужно показать
+  // Лёгкая вибрация, когда кто-то отвечает именно на ваше сообщение.
+  // Работает независимо от настройки уведомлений — это просто тактильный
+  // отклик, а не push, и только на устройствах, которые это умеют.
+  if (isReplyToMe && navigator.vibrate) {
+    navigator.vibrate(35);
+  }
+
+  if ((isMention || isReplyToMe) && !document.hidden) {
+    // Приложение открыто — упоминание/ответ всё равно заметно нужно показать
     playPingSound();
-    showToast(`${msg.name || 'Гость'} упомянул(а) вас`);
+    showToast(isReplyToMe ? `${msg.name || 'Гость'} ответил(а) вам` : `${msg.name || 'Гость'} упомянул(а) вас`);
   }
 
   if (!notificationsEnabled) return;
@@ -3937,7 +3975,9 @@ function notifyIncomingMessage(msg) {
   playPingSound();
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const title = isMention ? `${msg.name || 'Гость'} упомянул(а) вас` : (msg.name || 'Гость') + ' пишет';
+      const title = isReplyToMe
+        ? `${msg.name || 'Гость'} ответил(а) вам`
+        : (isMention ? `${msg.name || 'Гость'} упомянул(а) вас` : (msg.name || 'Гость') + ' пишет');
       new Notification(title, { body: msg.text || (msg.gifUrl ? '🎞 GIF' : (msg.image ? '📷 Фото' : '')), tag: 'wt-chat-' + room });
     } catch (e) {}
   }
