@@ -157,6 +157,16 @@ input, select{ font-family:inherit; }
 }
 .btn-danger:hover{ background:rgba(255,90,118,.22); }
 
+.ttt-cell{
+  aspect-ratio:1; border-radius:14px; border:1px solid var(--border);
+  background:var(--surface-2); font-size:36px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:background .15s, transform .1s; user-select:none;
+}
+.ttt-cell:active{ transform:scale(.94); }
+.ttt-cell.filled{ cursor:default; }
+.ttt-cell.x{ color:var(--primary, #6c8cff); }
+.ttt-cell.o{ color:#ff7a7a; }
 .icon-btn{
   width:40px; height:40px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
@@ -420,6 +430,11 @@ body.in-room, body.in-room html{ overflow:hidden; }
 }
 .stream-frame-peek.show{ display:flex; }
 .stream-frame-peek svg{ width:15px; height:15px; }
+.yt-player{
+  position:absolute; inset:0; width:100%; height:100%; background:#000; z-index:1;
+}
+.yt-player iframe{ width:100%; height:100%; display:block; border:0; }
+#ytFramePeek svg{ width:16px; height:16px; }
 .video-wrap{
   position:relative;
   width:100%;
@@ -435,11 +450,14 @@ body.in-room, body.in-room html{ overflow:hidden; }
   max-height:100vh; height:100vh; aspect-ratio:auto;
 }
 .video-wrap:fullscreen video,
-.video-wrap:fullscreen .stream-frame{
+.video-wrap:fullscreen .stream-frame,
+.video-wrap:fullscreen .yt-player{
   width:100vw; height:100vh;
 }
 .video-wrap:fullscreen .stream-frame-bar,
-.video-wrap:fullscreen .stream-frame-peek{ display:none !important; }
+.video-wrap:fullscreen .stream-frame-peek,
+.video-wrap:fullscreen #ytFrameBar,
+.video-wrap:fullscreen #ytFramePeek{ display:none !important; }
 
 /* Фолбэк на случай, когда браузер не поддерживает Fullscreen API для
    произвольных блоков (это касается Safari на iPhone/iPad — там нативный
@@ -450,11 +468,14 @@ body.in-room, body.in-room html{ overflow:hidden; }
   aspect-ratio:auto; border-radius:0;
 }
 .video-wrap.fake-fullscreen video,
-.video-wrap.fake-fullscreen .stream-frame{
+.video-wrap.fake-fullscreen .stream-frame,
+.video-wrap.fake-fullscreen .yt-player{
   width:100vw; height:100vh;
 }
 .video-wrap.fake-fullscreen .stream-frame-bar,
-.video-wrap.fake-fullscreen .stream-frame-peek{ display:none !important; }
+.video-wrap.fake-fullscreen .stream-frame-peek,
+.video-wrap.fake-fullscreen #ytFrameBar,
+.video-wrap.fake-fullscreen #ytFramePeek{ display:none !important; }
 body.video-fake-fullscreen{ overflow:hidden; }
 body.video-fake-fullscreen .bottom-nav{ display:none; }
 .expand-btn{
@@ -633,6 +654,26 @@ select{
 }
 
 /* ---------- Chat ---------- */
+.msg-mention{
+  color:var(--primary); font-weight:700;
+  background:var(--primary-soft); border-radius:4px; padding:0 3px;
+}
+.msg-row.mentioned .msg-body{
+  box-shadow:0 0 0 2px var(--primary);
+}
+.mention-dropdown{
+  position:absolute; left:14px; right:14px; bottom:100%;
+  margin-bottom:6px; background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; overflow:hidden; display:none;
+  box-shadow:0 8px 24px rgba(0,0,0,.25); z-index:5;
+}
+.mention-dropdown.show{ display:block; }
+.mention-item{
+  display:flex; align-items:center; gap:8px; padding:10px 14px;
+  font-size:14px; font-weight:600; cursor:pointer;
+}
+.mention-item:active, .mention-item.active{ background:var(--surface-2); }
+
 .chat-section{
   flex:1 1 0; min-height:110px;
   display:flex; flex-direction:column;
@@ -675,7 +716,17 @@ select{
   padding:7px 10px 6px;
   border-radius:15px;
   border-bottom-left-radius:4px;
+  transition:transform .18s var(--ease);
+  touch-action:pan-y;
 }
+.msg-swipe-icon{
+  position:absolute; top:50%; left:-34px; transform:translateY(-50%) scale(.5);
+  width:26px; height:26px; border-radius:50%; background:var(--surface-2);
+  border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center; color:var(--primary);
+  opacity:0; pointer-events:none;
+}
+.msg-swipe-icon svg{ width:14px; height:14px; }
 .msg-row.own .msg-body{
   background:var(--primary-soft);
   border-color:transparent;
@@ -734,6 +785,14 @@ select{
   background:var(--surface); border-radius:var(--radius-full);
   animation:msg-in .22s var(--ease);
 }
+
+.msg-row.ai-msg .msg-body{
+  background:linear-gradient(135deg, rgba(124,92,255,.14), rgba(124,92,255,.05));
+  border:1px solid rgba(124,92,255,.28);
+  border-radius:14px; padding:8px 10px;
+}
+.msg-row.ai-msg .msg-name{ color:#a58bff; display:flex; align-items:center; gap:4px; }
+.msg-row.ai-msg .msg-avatar{ background:linear-gradient(135deg,#7c5cff,#a58bff); }
 
 .msg-image{
   display:block; max-width:220px; max-height:220px; width:auto; height:auto;
@@ -831,6 +890,57 @@ select{
   background:var(--surface);
 }
 .chat-input .icon-btn{ background:var(--surface); }
+#micBtn.recording{ background:var(--danger, #e05252); color:#fff; }
+
+.voice-record-bar{
+  display:none; align-items:center; gap:10px;
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  background:var(--card);
+  border-top:1px solid var(--border-soft);
+}
+.voice-record-bar.show{ display:flex; }
+.voice-cancel-btn{
+  width:36px; height:36px; flex-shrink:0; border-radius:50%; border:0; cursor:pointer;
+  background:var(--surface); color:var(--text-secondary); font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+}
+.voice-rec-dot{
+  width:10px; height:10px; border-radius:50%; background:#e05252; flex-shrink:0;
+  animation:voice-rec-pulse 1.1s infinite;
+}
+@keyframes voice-rec-pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+.voice-rec-time{ font-family:var(--font-display); font-weight:800; font-size:14px; color:var(--text); flex-shrink:0; }
+.voice-rec-hint{ flex:1; min-width:0; font-size:12.5px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.voice-send-btn{
+  width:44px; height:44px; flex-shrink:0; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg, var(--primary-hover), var(--primary));
+  color:var(--primary-ink);
+  box-shadow:0 6px 18px rgba(201,168,78,.32);
+}
+.voice-send-btn svg{ width:18px; height:18px; }
+
+.msg-voice{
+  display:flex; align-items:center; gap:9px;
+  margin-top:4px; padding:6px 10px 6px 6px;
+  background:var(--surface); border-radius:14px; min-width:180px;
+}
+.msg-voice .voice-play-btn{
+  width:32px; height:32px; flex-shrink:0; border-radius:50%; border:0; cursor:pointer;
+  background:linear-gradient(135deg, var(--primary-hover), var(--primary));
+  color:var(--primary-ink);
+  display:flex; align-items:center; justify-content:center;
+}
+.msg-voice .voice-play-btn svg{ width:14px; height:14px; }
+.msg-voice .voice-track{
+  flex:1; height:3px; border-radius:2px; background:var(--border);
+  position:relative; overflow:hidden;
+}
+.msg-voice .voice-track-fill{
+  position:absolute; left:0; top:0; bottom:0; width:0%;
+  background:var(--primary); border-radius:2px;
+}
+.msg-voice .voice-duration{ font-size:11.5px; color:var(--text-faint); flex-shrink:0; font-variant-numeric:tabular-nums; }
 .send-btn{
   width:44px; height:44px; flex-shrink:0; border-radius:50%;
   display:flex; align-items:center; justify-content:center;
@@ -1093,12 +1203,15 @@ select{
           <button type="button" class="expand-btn ripple-host" id="expandBtn" onclick="toggleFullscreen()" aria-label="Развернуть видео" title="Развернуть видео" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
           </button>
+          <button type="button" class="expand-btn ripple-host" id="pipBtn" onclick="togglePip()" aria-label="Смотреть в плавающем окне" title="Продолжить в фоне (Picture-in-Picture)" style="display:none; left:52px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="11" y="11" width="8" height="6" rx="1" fill="currentColor"/></svg>
+          </button>
           <div class="no-video" id="noVideo">
             <div class="nv-icon">
               <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
             </div>
             <div class="nv-title">Пока тишина</div>
-            <p>Загрузите видео, выберите из списка ниже — или вставьте ссылку на трансляцию с другого сайта</p>
+            <p>Загрузите видео, выберите из списка ниже — или вставьте ссылку на YouTube (с полной синхронизацией) либо трансляцию с другого сайта</p>
           </div>
           <div class="stream-link-card" id="streamLinkCard" style="display:none;">
             <div class="nv-icon">
@@ -1129,6 +1242,19 @@ select{
           </button>
           <div class="video-loading" id="videoLoading"><div class="spinner"></div></div>
           <video id="player" controls playsinline style="display:none;"></video>
+          <!-- Контейнер для YouTube IFrame Player API — сюда сам API вставит
+               свой iframe. В отличие от streamFrame (голый iframe без контроля),
+               этим плеером можно управлять программно: play/pause/seek —
+               и события транслируются остальным зрителям как настоящая синхронизация. -->
+          <div id="ytPlayer" class="yt-player" style="display:none;"></div>
+          <div class="stream-frame-bar" id="ytFrameBar" style="display:none;">
+            <span id="ytFrameFrom"></span>
+            <button type="button" onclick="openYoutubeLink()">Открыть на YouTube ↗</button>
+            <button type="button" class="stream-frame-bar-close" onclick="hideYtFrameBar()" aria-label="Скрыть панель">✕</button>
+          </div>
+          <button type="button" class="stream-frame-peek" id="ytFramePeek" onclick="showYtFrameBar()" aria-label="Показать панель YouTube">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
+          </button>
         </div>
 
         <div class="stage-toolbar">
@@ -1171,18 +1297,34 @@ select{
           <span class="caption" id="chatAttachCaption">Картинка готова к отправке</span>
           <button type="button" onclick="clearChatAttachment()" aria-label="Убрать картинку">✕</button>
         </div>
-        <div class="chat-input">
+        <div class="mention-dropdown" id="mentionDropdown"></div>
+        <div class="chat-input" id="chatInputBar">
           <button class="icon-btn" id="attachBtn" onmousedown="event.preventDefault()" onclick="document.getElementById('chatImageInput').click()" aria-label="Прикрепить фото">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 15l-5-5-9 9"/></svg>
           </button>
           <input type="file" id="chatImageInput" accept="image/*" style="display:none;" onchange="handleChatImageSelect(event)" />
           <button class="icon-btn" id="gifBtn" onmousedown="event.preventDefault()" onclick="openGifPicker()" aria-label="GIF" style="font-size:11px; font-weight:800; letter-spacing:.02em;">GIF</button>
+          <button class="icon-btn" id="gameBtn" onmousedown="event.preventDefault()" onclick="openTttSheet()" aria-label="Игра" style="font-size:16px;">🎮</button>
+          <button class="icon-btn" id="aiAskBtn" onmousedown="event.preventDefault()" onclick="promptAiAsk()" aria-label="Спросить AI" title="Спросить AI (актёры, треки, объяснения по сюжету)" style="font-size:15px;">🤖</button>
           <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="openEmojiPicker()" aria-label="Эмодзи">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
           </button>
           <input class="field" type="text" id="chatInput" placeholder="Написать... (Ctrl+V — вставить скриншот)" autocomplete="off" enterkeyhint="send"
-                 onkeydown="if(event.key==='Enter') sendChat()" oninput="handleTyping()" />
+                 onkeydown="if(event.key==='Enter') sendChat(); if(event.key==='Escape') document.getElementById('mentionDropdown').classList.remove('show');"
+                 oninput="handleTyping()" onblur="setTimeout(() => document.getElementById('mentionDropdown').classList.remove('show'), 150)" />
+          <button class="icon-btn" id="micBtn" onmousedown="event.preventDefault()" onclick="startVoiceRecording()" aria-label="Голосовое сообщение">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
+          </button>
           <button type="button" class="send-btn ripple-host" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="voice-record-bar" id="voiceRecordBar">
+          <button type="button" class="voice-cancel-btn" onclick="cancelVoiceRecording()" aria-label="Отменить запись">✕</button>
+          <div class="voice-rec-dot"></div>
+          <span class="voice-rec-time" id="voiceRecordTime">0:00</span>
+          <span class="voice-rec-hint">Идёт запись…</span>
+          <button type="button" class="voice-send-btn ripple-host" onclick="finishVoiceRecording()" aria-label="Отправить голосовое">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </button>
         </div>
@@ -1300,6 +1442,20 @@ select{
   </div>
 </div>
 
+<!-- Крестики-нолики -->
+<div class="overlay" id="tttOverlay" onclick="if(event.target===this) closeSheet('tttOverlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Крестики-нолики <button class="icon-btn" onclick="closeSheet('tttOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div id="tttStatus" style="text-align:center; font-size:14px; color:var(--text-dim); margin-bottom:14px;">Нажмите «Начать», чтобы сыграть</div>
+    <div id="tttBoard" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; max-width:280px; margin:0 auto;"></div>
+    <div style="display:flex; gap:8px; margin-top:16px;">
+      <button type="button" class="btn btn-primary btn-block ripple-host" onclick="tttStart()">Начать</button>
+      <button type="button" class="btn btn-ghost btn-block ripple-host" onclick="tttReset()">Заново</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="image-lightbox" id="imageLightbox" onclick="if(event.target===this) closeImageLightbox()">
@@ -1326,6 +1482,10 @@ let lastTypingEmit = 0;
 let remoteTypingTimeout = null;
 let currentTypingUser = null;
 let notificationsEnabled = localStorage.getItem('wt_notifications') === '1';
+let tttMySymbol = null; // 'X' или 'O' — назначается сервером
+let tttLastState = null;
+let roomMemberNames = []; // имена остальных участников комнаты, для @упоминаний
+let mentionQueryStart = -1; // индекс символа '@' в поле ввода, если сейчас набирается упоминание
 let audioCtx = null;
 
 /* -----------------------------------------------------------
@@ -1595,6 +1755,9 @@ function setupSocket() {
     loadVideoList();
     if (hasConnectedBefore) showToast('Соединение восстановлено');
     hasConnectedBefore = true;
+    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      subscribeToPush();
+    }
   });
 
   socket.on('disconnect', () => {
@@ -1608,10 +1771,24 @@ function setupSocket() {
     } else if (state.externalVideo) {
       showExternalVideo(state.externalVideo, null, false);
       player.currentTime = state.currentTime || 0;
+    } else if (state.youtubeVideo) {
+      showYoutubeVideo(state.youtubeVideo, null, false);
+      // время выставится в onReady чуть ниже через отдельный сет — YT-плеер
+      // ещё не готов синхронно в этот момент, поэтому ждём его инициализации
+      const seekWhenReady = setInterval(() => {
+        if (ytPlayerInstance && typeof ytPlayerInstance.seekTo === 'function') {
+          clearInterval(seekWhenReady);
+          try { ytPlayerInstance.seekTo(state.currentTime || 0, true); if (!state.playing) ytPlayerInstance.pauseVideo(); } catch (e) {}
+        }
+      }, 300);
     } else if (state.streamLink) {
       showStreamLink(state.streamLink, null, false);
     }
+    renderTttState(state.ttt);
   });
+
+  socket.on('ttt-state', (state) => renderTttState(state));
+  socket.on('ttt-you', ({ symbol }) => { tttMySymbol = symbol; renderTttState(tttLastState); });
 
   socket.on('video-selected', ({ filename }) => {
     showVideo(filename, false);
@@ -1621,28 +1798,49 @@ function setupSocket() {
     showExternalVideo(url, from, false);
   });
 
+  socket.on('youtube-video-selected', ({ url, from }) => {
+    showYoutubeVideo(url, from, false);
+  });
+
   socket.on('stream-link-updated', ({ url, from }) => {
     showStreamLink(url, from, false);
   });
 
+  // Эти три события общие для видео-файла и YouTube — сервер не знает и
+  // не должен знать, какой именно плеер сейчас активен на клиенте, он
+  // просто транслирует time/playing всем остальным.
   socket.on('sync-play', ({ time }) => {
     syncing = true;
-    player.currentTime = time;
-    player.play();
-    setTimeout(() => syncing = false, 200);
+    if (currentYoutubeVideo && ytPlayerInstance) {
+      ytPlayerInstance.seekTo(time, true);
+      ytPlayerInstance.playVideo();
+    } else {
+      player.currentTime = time;
+      player.play();
+    }
+    setTimeout(() => syncing = false, 300);
   });
 
   socket.on('sync-pause', ({ time }) => {
     syncing = true;
-    player.currentTime = time;
-    player.pause();
-    setTimeout(() => syncing = false, 200);
+    if (currentYoutubeVideo && ytPlayerInstance) {
+      ytPlayerInstance.seekTo(time, true);
+      ytPlayerInstance.pauseVideo();
+    } else {
+      player.currentTime = time;
+      player.pause();
+    }
+    setTimeout(() => syncing = false, 300);
   });
 
   socket.on('sync-seek', ({ time }) => {
     syncing = true;
-    player.currentTime = time;
-    setTimeout(() => syncing = false, 200);
+    if (currentYoutubeVideo && ytPlayerInstance) {
+      ytPlayerInstance.seekTo(time, true);
+    } else {
+      player.currentTime = time;
+    }
+    setTimeout(() => syncing = false, 300);
   });
 
   socket.on('chat-message', (msg) => {
@@ -1661,6 +1859,10 @@ function setupSocket() {
     document.getElementById('profileViewers').textContent = count;
   });
 
+  socket.on('room-users', ({ names }) => {
+    roomMemberNames = (names || []).filter((n) => n !== name);
+  });
+
   socket.on('user-typing', ({ name: who }) => {
     if (who === name) return;
     showTyping(who);
@@ -1675,32 +1877,61 @@ function setupSocket() {
    ----------------------------------------------------------- */
 let currentStreamLink = null;
 let currentExternalVideo = null;
+let currentYoutubeVideo = null;
 let hlsInstance = null;
+
+let ytApiReady = false;
+let ytApiLoading = false;
+let ytPlayerInstance = null;
+let ytPendingVideoId = null; // если запросили загрузку видео до готовности API
 
 // Прямая ссылка на файл (.mp4 и т.п.) или на HLS-плейлист (.m3u8) можно
 // загрузить прямо в наш <video> — тогда play/pause/перемотка синхронизируются
-// у всех по-настоящему. Ссылка на страницу сайта (ютуб, твич, обычный сайт)
-// так не грузится — её можно только встроить как iframe, без синхронизации.
+// у всех по-настоящему. YouTube — отдельный случай: через официальный
+// YouTube IFrame Player API можно программно управлять чужим плеером
+// (play/pause/seek), поэтому синхронизация тоже настоящая — см. showYoutubeVideo().
+// Ссылка на страницу произвольного сайта (Twitch и т.п.) так не грузится —
+// её можно только встроить как iframe, без синхронизации.
+function extractYoutubeId(url) {
+  const patterns = [
+    /(?:youtube\.com\/watch\?(?:.*&)?v=)([\w-]{11})/,
+    /(?:youtu\.be\/)([\w-]{11})/,
+    /(?:youtube\.com\/shorts\/)([\w-]{11})/,
+    /(?:youtube\.com\/embed\/)([\w-]{11})/,
+    /(?:youtube\.com\/live\/)([\w-]{11})/
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 function detectVideoUrlType(url) {
-  const clean = url.split('?')[0].split('#')[0];
-  if (/\.m3u8$/i.test(clean)) return 'hls';
-  if (/\.(mp4|webm|ogv|ogg|mov|m4v)$/i.test(clean)) return 'direct';
+  const clean = url.split('#')[0];
+  if (extractYoutubeId(clean)) return 'youtube';
+  const noQuery = clean.split('?')[0];
+  if (/\.m3u8$/i.test(noQuery)) return 'hls';
+  if (/\.(mp4|webm|ogv|ogg|mov|m4v)$/i.test(noQuery)) return 'direct';
   return 'embed';
 }
 
 function promptStreamLink() {
   const url = window.prompt(
     'Вставьте ссылку на видео:\n\n' +
-    '• прямая ссылка на файл (.mp4, .m3u8) — будет полная синхронизация play/pause у всех\n' +
-    '• ссылка на страницу сайта (YouTube, Twitch и т.п.) — просто встроится, без синхронизации',
-    currentExternalVideo || currentStreamLink || 'https://'
+    '• ссылка на YouTube — будет полная синхронизация play/pause/перемотки у всех\n' +
+    '• прямая ссылка на файл (.mp4, .m3u8) — тоже полная синхронизация\n' +
+    '• ссылка на страницу другого сайта (Twitch и т.п.) — просто встроится, без синхронизации',
+    currentYoutubeVideo || currentExternalVideo || currentStreamLink || 'https://'
   );
   if (!url) return;
   const trimmed = url.trim();
   if (!/^https?:\/\//i.test(trimmed)) { showToast('Ссылка должна начинаться с http:// или https://'); return; }
 
   const type = detectVideoUrlType(trimmed);
-  if (type === 'embed') {
+  if (type === 'youtube') {
+    socket.emit('set-youtube-video', { room, url: trimmed });
+  } else if (type === 'embed') {
     socket.emit('set-stream-link', { room, url: trimmed });
   } else {
     socket.emit('set-external-video', { room, url: trimmed });
@@ -1710,6 +1941,8 @@ function promptStreamLink() {
 function showStreamLink(url, from, notify) {
   currentStreamLink = url;
   currentExternalVideo = null;
+  currentYoutubeVideo = null;
+  hideYoutubeFrame();
   destroyHlsInstance();
   const player = document.getElementById('player');
   player.pause();
@@ -1837,11 +2070,203 @@ function destroyHlsInstance() {
   }
 }
 
+/* -----------------------------------------------------------
+   YouTube через официальный IFrame Player API — в отличие от
+   streamFrame (голый iframe без контроля), тут можно программно
+   play/pause/seek и слушать события плеера, поэтому синхронизация
+   между зрителями настоящая, а не просто "у каждого свой плеер".
+   ----------------------------------------------------------- */
+function loadYoutubeApi(onReady) {
+  if (ytApiReady) { onReady(); return; }
+  if (!window.__ytReadyCallbacks) window.__ytReadyCallbacks = [];
+  window.__ytReadyCallbacks.push(onReady);
+  if (ytApiLoading) return;
+  ytApiLoading = true;
+
+  window.onYouTubeIframeAPIReady = () => {
+    ytApiReady = true;
+    window.__ytReadyCallbacks.forEach((cb) => cb());
+    window.__ytReadyCallbacks = [];
+  };
+
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+}
+
+function hideYoutubeFrame() {
+  document.getElementById('ytPlayer').style.display = 'none';
+  document.getElementById('ytFrameBar').style.display = 'none';
+  document.getElementById('ytFramePeek').classList.remove('show');
+  if (ytPlayerInstance) {
+    try { ytPlayerInstance.stopVideo(); } catch (e) {}
+  }
+}
+
+function hideYtFrameBar() {
+  document.getElementById('ytFrameBar').style.display = 'none';
+  document.getElementById('ytFramePeek').classList.add('show');
+}
+
+function showYtFrameBar() {
+  document.getElementById('ytFrameBar').style.display = 'flex';
+  document.getElementById('ytFramePeek').classList.remove('show');
+}
+
+function openYoutubeLink() {
+  if (currentYoutubeVideo) window.open(currentYoutubeVideo, '_blank', 'noopener');
+}
+
+function showYoutubeVideo(url, from, notify) {
+  const videoId = extractYoutubeId(url);
+  if (!videoId) { showToast('Не удалось распознать ссылку на YouTube'); return; }
+
+  currentStreamLink = null;
+  currentExternalVideo = null;
+  currentYoutubeVideo = url;
+  destroyHlsInstance();
+  document.getElementById('streamLinkCard').style.display = 'none';
+  hideStreamFrame();
+
+  const video = document.getElementById('player');
+  video.pause();
+  video.removeAttribute('src');
+  video.style.display = 'none';
+
+  document.getElementById('noVideo').style.display = 'none';
+  document.getElementById('videoLoading').classList.remove('show');
+
+  const container = document.getElementById('ytPlayer');
+  container.style.display = 'block';
+
+  const bar = document.getElementById('ytFrameBar');
+  bar.style.display = 'flex';
+  document.getElementById('ytFrameFrom').textContent = from ? ('Добавил(а): ' + from) : '';
+  document.getElementById('ytFramePeek').classList.remove('show');
+
+  document.getElementById('expandBtn').style.display = 'flex';
+
+  const loading = document.getElementById('videoLoading');
+
+  loadYoutubeApi(() => {
+    if (ytPlayerInstance) {
+      ytPlayerInstance.loadVideoById(videoId);
+      return;
+    }
+    loading.classList.add('show');
+    ytPlayerInstance = new YT.Player('ytPlayer', {
+      videoId,
+      playerVars: {
+        playsinline: 1,
+        rel: 0,        // не показывать чужие рекомендованные видео по окончании — разрешено правилами API
+        modestbranding: 1
+      },
+      events: {
+        onReady: () => {
+          loading.classList.remove('show');
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: 'Смотрим вместе',
+              artist: room ? `Комната ${room}` : 'Watch Together',
+              artwork: [
+                { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+                { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+              ]
+            });
+            navigator.mediaSession.setActionHandler('play', () => ytPlayerInstance.playVideo());
+            navigator.mediaSession.setActionHandler('pause', () => ytPlayerInstance.pauseVideo());
+            navigator.mediaSession.setActionHandler('seekbackward', () => ytPlayerInstance.seekTo(Math.max(0, ytPlayerInstance.getCurrentTime() - 10), true));
+            navigator.mediaSession.setActionHandler('seekforward', () => ytPlayerInstance.seekTo(ytPlayerInstance.getCurrentTime() + 10, true));
+          }
+        },
+        onStateChange: (e) => {
+          if (syncing) return;
+          const time = ytPlayerInstance.getCurrentTime();
+          if (e.data === YT.PlayerState.PLAYING) {
+            loading.classList.remove('show');
+            socket.emit('play', { room, time });
+            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+            requestWakeLock();
+          } else if (e.data === YT.PlayerState.PAUSED) {
+            socket.emit('pause', { room, time });
+            if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+            releaseWakeLock();
+          } else if (e.data === YT.PlayerState.BUFFERING) {
+            loading.classList.add('show');
+          }
+          // Отдельного события для "перемотки" в YT API нет — приблизительно
+          // ловим её через большой скачок времени между play-событиями, для
+          // точности хватает того, что при паузе/старте мы всегда шлём time.
+        }
+      }
+    });
+  });
+
+  if (notify) socket.emit('set-youtube-video', { room, url });
+}
+
 // Общая проводка событий плеера (лоадер, соотношение сторон, синхронизация
 // play/pause/перемотки) — одна и та же что для своих загруженных видео,
 // что для видео по прямой внешней ссылке.
+/* -----------------------------------------------------------
+   Фоновое воспроизведение: Media Session (кнопки на экране блокировки
+   и разрешение системе не "убивать" звук в фоне) + Wake Lock (экран не
+   гаснет во время просмотра) + ручной Picture-in-Picture.
+   ----------------------------------------------------------- */
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+  } catch (e) { /* например, вкладка не видна — это ожидаемо, не критично */ }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  const player = document.getElementById('player');
+  if (document.visibilityState === 'visible' && player && !player.paused && !wakeLock) {
+    requestWakeLock();
+  }
+});
+
+function setupMediaSession(player) {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: 'Смотрим вместе',
+    artist: room ? `Комната ${room}` : 'Watch Together',
+    artwork: [
+      { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+    ]
+  });
+  navigator.mediaSession.setActionHandler('play', () => player.play());
+  navigator.mediaSession.setActionHandler('pause', () => player.pause());
+  navigator.mediaSession.setActionHandler('seekbackward', () => { player.currentTime = Math.max(0, player.currentTime - 10); });
+  navigator.mediaSession.setActionHandler('seekforward', () => { player.currentTime = Math.min(player.duration || 1e9, player.currentTime + 10); });
+}
+
+function togglePip() {
+  const player = document.getElementById('player');
+  if (document.pictureInPictureElement) {
+    document.exitPictureInPicture().catch(() => {});
+    return;
+  }
+  if (document.pictureInPictureEnabled && player.requestPictureInPicture) {
+    player.requestPictureInPicture().catch((e) => showToast('Picture-in-Picture недоступен: ' + e.message));
+  } else {
+    showToast('Picture-in-Picture не поддерживается в этом браузере');
+  }
+}
+
 function wirePlayerCommon(player) {
   document.getElementById('expandBtn').style.display = 'flex';
+  const pipBtn = document.getElementById('pipBtn');
+  if (pipBtn) pipBtn.style.display = ('pictureInPictureEnabled' in document && document.pictureInPictureEnabled) ? 'flex' : 'none';
 
   // reset to a sane default until we know the real dimensions, then match
   // the video-wrap's aspect ratio to the actual video so object-fit:contain
@@ -1859,14 +2284,26 @@ function wirePlayerCommon(player) {
   player.oncanplay = () => loading.classList.remove('show');
   player.onplaying = () => loading.classList.remove('show');
 
-  player.onplay = () => { if (!syncing) socket.emit('play', { room, time: player.currentTime }); };
-  player.onpause = () => { if (!syncing) socket.emit('pause', { room, time: player.currentTime }); };
+  player.onplay = () => {
+    if (!syncing) socket.emit('play', { room, time: player.currentTime });
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    requestWakeLock();
+  };
+  player.onpause = () => {
+    if (!syncing) socket.emit('pause', { room, time: player.currentTime });
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    releaseWakeLock();
+  };
   player.onseeked = () => { if (!syncing) socket.emit('seek', { room, time: player.currentTime }); };
+
+  setupMediaSession(player);
 }
 
 function showVideo(filename, notify) {
   currentStreamLink = null;
   currentExternalVideo = null;
+  currentYoutubeVideo = null;
+  hideYoutubeFrame();
   destroyHlsInstance();
   document.getElementById('streamLinkCard').style.display = 'none';
   hideStreamFrame();
@@ -1887,6 +2324,8 @@ function showVideo(filename, notify) {
 function showExternalVideo(url, from, notify) {
   currentStreamLink = null;
   currentExternalVideo = url;
+  currentYoutubeVideo = null;
+  hideYoutubeFrame();
   destroyHlsInstance();
   document.getElementById('streamLinkCard').style.display = 'none';
   hideStreamFrame();
@@ -2010,18 +2449,170 @@ document.addEventListener('keydown', (e) => {
    Chat
    ----------------------------------------------------------- */
 let pendingChatImage = null; // File объект, ожидающий отправки
-let replyingTo = null; // { id, name, text, image, gif }
 
-function startReply(id, fromName, text, hasImage, hasGif) {
+/* -----------------------------------------------------------
+   Голосовые сообщения — запись через MediaRecorder
+   ----------------------------------------------------------- */
+let voiceRecorder = null;
+let voiceChunks = [];
+let voiceStream = null;
+let voiceStartedAt = 0;
+let voiceTimerInterval = null;
+let voiceRecordingActive = false;
+
+function pickVoiceMimeType() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+  for (const type of candidates) {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return '';
+}
+
+function extForMimeType(type) {
+  if (type.includes('ogg')) return '.ogg';
+  if (type.includes('mp4')) return '.m4a';
+  return '.webm';
+}
+
+async function startVoiceRecording() {
+  if (voiceRecordingActive) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('Запись голоса не поддерживается этим браузером');
+    return;
+  }
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    showToast('Нет доступа к микрофону');
+    return;
+  }
+
+  const mimeType = pickVoiceMimeType();
+  try {
+    voiceRecorder = mimeType ? new MediaRecorder(voiceStream, { mimeType }) : new MediaRecorder(voiceStream);
+  } catch (e) {
+    showToast('Не удалось начать запись');
+    voiceStream.getTracks().forEach((t) => t.stop());
+    voiceStream = null;
+    return;
+  }
+
+  voiceChunks = [];
+  voiceRecorder.ondataavailable = (e) => { if (e.data && e.data.size) voiceChunks.push(e.data); };
+  voiceRecorder.start();
+  voiceRecordingActive = true;
+  voiceStartedAt = Date.now();
+
+  document.getElementById('chatInputBar').style.display = 'none';
+  document.getElementById('voiceRecordBar').classList.add('show');
+  document.getElementById('voiceRecordTime').textContent = '0:00';
+  voiceTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - voiceStartedAt) / 1000);
+    document.getElementById('voiceRecordTime').textContent = formatDuration(elapsed);
+    if (elapsed >= 300) finishVoiceRecording(); // защитный лимит — 5 минут
+  }, 250);
+}
+
+function exitVoiceRecordingUI() {
+  voiceRecordingActive = false;
+  clearInterval(voiceTimerInterval);
+  voiceTimerInterval = null;
+  document.getElementById('voiceRecordBar').classList.remove('show');
+  document.getElementById('chatInputBar').style.display = '';
+  if (voiceStream) {
+    voiceStream.getTracks().forEach((t) => t.stop());
+    voiceStream = null;
+  }
+}
+
+function cancelVoiceRecording() {
+  if (!voiceRecorder) { exitVoiceRecordingUI(); return; }
+  voiceRecorder.onstop = () => { voiceChunks = []; exitVoiceRecordingUI(); };
+  try { voiceRecorder.stop(); } catch (e) { exitVoiceRecordingUI(); }
+}
+
+function finishVoiceRecording() {
+  if (!voiceRecorder) { exitVoiceRecordingUI(); return; }
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - voiceStartedAt) / 1000));
+  const mimeType = voiceRecorder.mimeType || 'audio/webm';
+  voiceRecorder.onstop = () => {
+    exitVoiceRecordingUI();
+    if (elapsedSeconds < 1 || !voiceChunks.length) return;
+    const blob = new Blob(voiceChunks, { type: mimeType });
+    voiceChunks = [];
+    sendVoiceMessage(blob, elapsedSeconds, mimeType);
+  };
+  try { voiceRecorder.stop(); } catch (e) { exitVoiceRecordingUI(); }
+}
+
+function uploadVoiceBlob(blob, mimeType) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('voice', blob, 'voice' + extForMimeType(mimeType));
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/upload-voice');
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error('Сервер вернул код ' + xhr.status));
+        return;
+      }
+      try {
+        const res = JSON.parse(xhr.responseText);
+        if (!res.filename) { reject(new Error('Сервер не вернул имя файла')); return; }
+        resolve(res.filename);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.onerror = () => reject(new Error('Ошибка сети при загрузке голосового'));
+    xhr.send(formData);
+  });
+}
+
+function sendVoiceMessage(blob, durationSeconds, mimeType) {
+  if (!socket || !room) { showToast('Нет соединения'); return; }
+  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif, voice: replyingTo.voice } : null;
+  uploadVoiceBlob(blob, mimeType)
+    .then((filename) => {
+      socket.emit('chat-message', { room, voice: filename, voiceDuration: durationSeconds, replyTo: replyPayload });
+      clearReply();
+    })
+    .catch((err) => {
+      console.error('Ошибка отправки голосового:', err);
+      showToast('Не удалось отправить голосовое');
+    });
+}
+
+function formatDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return m + ':' + String(rem).padStart(2, '0');
+}
+
+function toggleVoicePlayback(btn, audio) {
+  document.querySelectorAll('.msg-voice audio').forEach((a) => {
+    if (a !== audio && !a.paused) a.pause();
+  });
+  if (audio.paused) {
+    audio.play().catch(() => showToast('Не удалось воспроизвести'));
+  } else {
+    audio.pause();
+  }
+}
+let replyingTo = null; // { id, name, text, image, gif, voice }
+
+function startReply(id, fromName, text, hasImage, hasGif, hasVoice) {
   replyingTo = {
     id,
     name: fromName,
     text: (text || '').slice(0, 300),
     image: !!hasImage,
-    gif: !!hasGif
+    gif: !!hasGif,
+    voice: !!hasVoice
   };
   document.getElementById('replyToName').textContent = fromName;
-  document.getElementById('replyToText').textContent = text || (hasGif ? '🎞 GIF' : (hasImage ? '📷 Фото' : ''));
+  document.getElementById('replyToText').textContent = text || (hasGif ? '🎞 GIF' : (hasImage ? '📷 Фото' : (hasVoice ? '🎤 Голосовое' : '')));
   document.getElementById('replyPreview').classList.add('show');
   document.getElementById('chatInput').focus();
 }
@@ -2029,6 +2620,74 @@ function startReply(id, fromName, text, hasImage, hasGif) {
 function clearReply() {
   replyingTo = null;
   document.getElementById('replyPreview').classList.remove('show');
+}
+
+// Свайп сообщения вправо -> ответ на него (жест как в Telegram/WhatsApp).
+// Работает через Pointer Events, поэтому одинаково реагирует и на палец, и на мышь.
+function attachSwipeReply(bodyEl, msg, displayName) {
+  if (!msg.id) return; // системные сообщения ("вошёл/вышел") не отвечаемы
+
+  const icon = document.createElement('div');
+  icon.className = 'msg-swipe-icon';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17l-5-5 5-5M4 12h10a5 5 0 015 5v1"/></svg>';
+  bodyEl.appendChild(icon);
+
+  const THRESHOLD = 56; // сколько пикселей нужно протянуть, чтобы сработало
+  const MAX_DRAG = 84;
+  let startX = 0, startY = 0, dx = 0;
+  let dragging = false, decided = false, isHorizontal = false;
+
+  const reset = () => {
+    bodyEl.style.transition = 'transform .18s var(--ease)';
+    bodyEl.style.transform = '';
+    icon.style.opacity = 0;
+    icon.style.transform = 'translateY(-50%) scale(.5)';
+  };
+
+  bodyEl.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    startX = e.clientX; startY = e.clientY; dx = 0;
+    dragging = true; decided = false; isHorizontal = false;
+    bodyEl.style.transition = 'none';
+  });
+
+  bodyEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const cdx = e.clientX - startX;
+    const cdy = e.clientY - startY;
+
+    if (!decided) {
+      if (Math.abs(cdx) > 8 || Math.abs(cdy) > 8) {
+        decided = true;
+        // Только вправо, и только если движение явно горизонтальное —
+        // иначе не мешаем обычному вертикальному скроллу списка сообщений
+        isHorizontal = cdx > 0 && Math.abs(cdx) > Math.abs(cdy) * 1.3;
+        if (isHorizontal) bodyEl.setPointerCapture(e.pointerId);
+      }
+    }
+    if (!isHorizontal) return;
+
+    dx = Math.max(0, Math.min(cdx, MAX_DRAG));
+    e.preventDefault();
+    bodyEl.style.transform = `translateX(${dx}px)`;
+    const progress = Math.min(dx / THRESHOLD, 1);
+    icon.style.opacity = progress;
+    icon.style.transform = `translateY(-50%) scale(${0.5 + progress * 0.5})`;
+  });
+
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+    const triggered = isHorizontal && dx >= THRESHOLD;
+    reset();
+    if (triggered) {
+      if (navigator.vibrate) navigator.vibrate(10);
+      startReply(msg.id, displayName, msg.text, !!msg.image, !!msg.gifUrl, !!msg.voice);
+    }
+  };
+
+  bodyEl.addEventListener('pointerup', finish);
+  bodyEl.addEventListener('pointercancel', finish);
 }
 
 function jumpToMessage(id) {
@@ -2116,11 +2775,24 @@ function uploadChatImage(file) {
   });
 }
 
+// Кнопка 🤖 просто подставляет команду в поле ввода — сама логика вопроса
+// живёт на сервере (см. "/ai" в обработчике chat-message), это позволяет
+// переиспользовать всю уже готовую отправку чата (typing-индикатор AI тоже
+// приходит через обычные события user-typing/user-stop-typing).
+function promptAiAsk() {
+  const input = document.getElementById('chatInput');
+  if (!input.value.trim().toLowerCase().startsWith('/ai')) {
+    input.value = '/ai ';
+  }
+  input.focus();
+  if (input.setSelectionRange) input.setSelectionRange(input.value.length, input.value.length);
+}
+
 function sendChat() {
   const input = document.getElementById('chatInput');
   const text = input.value.trim();
   const imageFile = pendingChatImage;
-  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif } : null;
+  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif, voice: replyingTo.voice } : null;
 
   if (!text && !imageFile) return;
 
@@ -2129,6 +2801,7 @@ function sendChat() {
     input.value = '';
     stopTypingEmit();
     clearReply();
+    document.getElementById('mentionDropdown').classList.remove('show');
     requestAnimationFrame(() => input.focus());
     return;
   }
@@ -2162,7 +2835,82 @@ function handleTyping() {
   }
   clearTimeout(typingTimeout);
   typingTimeout = setTimeout(stopTypingEmit, 2500);
+  updateMentionDropdown();
 }
+
+/* -----------------------------------------------------------
+   @упоминания: детект набора, автодополнение, вставка
+   ----------------------------------------------------------- */
+function updateMentionDropdown() {
+  const input = document.getElementById('chatInput');
+  const dropdown = document.getElementById('mentionDropdown');
+  const caret = input.selectionStart;
+  const before = input.value.slice(0, caret);
+  const match = before.match(/(?:^|\s)@([^\s@]{0,24})$/);
+
+  if (!match || !roomMemberNames.length) {
+    mentionQueryStart = -1;
+    dropdown.classList.remove('show');
+    return;
+  }
+
+  mentionQueryStart = caret - match[1].length - 1;
+  const query = match[1].toLowerCase();
+  const suggestions = roomMemberNames.filter((n) => n.toLowerCase().startsWith(query));
+
+  if (!suggestions.length) {
+    dropdown.classList.remove('show');
+    return;
+  }
+
+  dropdown.innerHTML = '';
+  suggestions.forEach((n) => {
+    const item = document.createElement('div');
+    item.className = 'mention-item';
+    item.textContent = '@' + n;
+    item.onmousedown = (ev) => { ev.preventDefault(); insertMention(n); };
+    dropdown.appendChild(item);
+  });
+  dropdown.classList.add('show');
+}
+
+function insertMention(mentionName) {
+  const input = document.getElementById('chatInput');
+  const before = input.value.slice(0, mentionQueryStart);
+  const after = input.value.slice(input.selectionStart);
+  input.value = `${before}@${mentionName} ${after}`;
+  const newCaret = (before + '@' + mentionName + ' ').length;
+  input.setSelectionRange(newCaret, newCaret);
+  document.getElementById('mentionDropdown').classList.remove('show');
+  mentionQueryStart = -1;
+  input.focus();
+}
+
+// Разбивает текст сообщения на обычный текст + подсвеченные @упоминания,
+// не трогая textContent пользовательского ввода (без innerHTML — безопасно)
+function renderMessageText(container, text, mentions) {
+  container.textContent = '';
+  if (!text) return;
+  if (!mentions || !mentions.length) { container.textContent = text; return; }
+
+  const regex = /@([^\s@]{1,24})/g;
+  let lastIndex = 0, match;
+  while ((match = regex.exec(text))) {
+    const isReal = mentions.some((m) => m.toLowerCase() === match[1].toLowerCase());
+    if (match.index > lastIndex) container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    if (isReal) {
+      const span = document.createElement('span');
+      span.className = 'msg-mention';
+      span.textContent = match[0];
+      container.appendChild(span);
+    } else {
+      container.appendChild(document.createTextNode(match[0]));
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) container.appendChild(document.createTextNode(text.slice(lastIndex)));
+}
+
 function stopTypingEmit() {
   clearTimeout(typingTimeout);
   if (socket) socket.emit('stop-typing', { room, name });
@@ -2251,7 +2999,8 @@ function addChatMessage(msg) {
     const isOwn = displayName === name;
 
     const row = document.createElement('div');
-    row.className = 'msg-row' + (isOwn ? ' own' : '');
+    const isMentioned = !!(msg.mentions && msg.mentions.some((m) => m === name));
+    row.className = 'msg-row' + (isOwn ? ' own' : '') + (isMentioned ? ' mentioned' : '') + (msg.ai ? ' ai-msg' : '');
     if (msg.id) row.dataset.id = msg.id;
 
     const avatar = document.createElement('div');
@@ -2270,8 +3019,8 @@ function addChatMessage(msg) {
 
     const textEl = document.createElement('div');
     textEl.className = 'msg-text';
-    textEl.textContent = msg.text;
-    const isBigEmoji = !!msg.id && !msg.image && !msg.gifUrl && !msg.replyTo && isEmojiOnlyText(msg.text);
+    renderMessageText(textEl, msg.text, msg.mentions);
+    const isBigEmoji = !!msg.id && !msg.image && !msg.gifUrl && !msg.voice && !msg.replyTo && isEmojiOnlyText(msg.text);
     if (isBigEmoji) textEl.classList.add('msg-text-emoji-only');
 
     const timeEl = document.createElement('div');
@@ -2287,7 +3036,7 @@ function addChatMessage(msg) {
       replyBtn.className = 'msg-react-btn';
       replyBtn.setAttribute('aria-label', 'Ответить на сообщение');
       replyBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 17l-5-5 5-5M4 12h10a5 5 0 015 5v1"/></svg>';
-      replyBtn.onclick = (ev) => { ev.stopPropagation(); startReply(msg.id, displayName, msg.text, !!msg.image, !!msg.gifUrl); };
+      replyBtn.onclick = (ev) => { ev.stopPropagation(); startReply(msg.id, displayName, msg.text, !!msg.image, !!msg.gifUrl, !!msg.voice); };
       line.appendChild(replyBtn);
     }
 
@@ -2308,7 +3057,7 @@ function addChatMessage(msg) {
       quote.className = 'msg-quote';
       quote.innerHTML = '<div class="bar"></div><div class="info"><div class="to-name"></div><div class="to-text"></div></div>';
       quote.querySelector('.to-name').textContent = msg.replyTo.name || 'Гость';
-      quote.querySelector('.to-text').textContent = msg.replyTo.text || (msg.replyTo.gif ? '🎞 GIF' : (msg.replyTo.image ? '📷 Фото' : ''));
+      quote.querySelector('.to-text').textContent = msg.replyTo.text || (msg.replyTo.gif ? '🎞 GIF' : (msg.replyTo.image ? '📷 Фото' : (msg.replyTo.voice ? '🎤 Голосовое' : '')));
       quote.onclick = (ev) => { ev.stopPropagation(); jumpToMessage(msg.replyTo.id); };
       bodyEl.appendChild(quote);
     }
@@ -2343,6 +3092,48 @@ function addChatMessage(msg) {
       bodyEl.appendChild(wrap);
     }
 
+    if (msg.voice) {
+      const voiceWrap = document.createElement('div');
+      voiceWrap.className = 'msg-voice';
+
+      const audio = document.createElement('audio');
+      audio.src = msg.voice;
+      audio.preload = 'none';
+
+      const playBtn = document.createElement('button');
+      playBtn.type = 'button';
+      playBtn.className = 'voice-play-btn';
+      playBtn.setAttribute('aria-label', 'Воспроизвести голосовое');
+      const playIcon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+      const pauseIcon = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
+      playBtn.innerHTML = playIcon;
+      playBtn.onclick = () => toggleVoicePlayback(playBtn, audio);
+
+      const track = document.createElement('div');
+      track.className = 'voice-track';
+      const trackFill = document.createElement('div');
+      trackFill.className = 'voice-track-fill';
+      track.appendChild(trackFill);
+
+      const durationEl = document.createElement('span');
+      durationEl.className = 'voice-duration';
+      durationEl.textContent = formatDuration(msg.voiceDuration || 0);
+
+      audio.addEventListener('play', () => { playBtn.innerHTML = pauseIcon; });
+      audio.addEventListener('pause', () => { playBtn.innerHTML = playIcon; });
+      audio.addEventListener('ended', () => { playBtn.innerHTML = playIcon; trackFill.style.width = '0%'; });
+      audio.addEventListener('timeupdate', () => {
+        if (audio.duration) trackFill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+        durationEl.textContent = formatDuration(audio.duration ? (audio.duration - audio.currentTime) : (msg.voiceDuration || 0));
+      });
+
+      voiceWrap.appendChild(playBtn);
+      voiceWrap.appendChild(track);
+      voiceWrap.appendChild(durationEl);
+      voiceWrap.appendChild(audio);
+      bodyEl.appendChild(voiceWrap);
+    }
+
     if (msg.id) {
       bodyEl.addEventListener('dblclick', (ev) => {
         ev.preventDefault();
@@ -2355,6 +3146,8 @@ function addChatMessage(msg) {
     if (isBigEmoji) {
       triggerEmojiBurst(bodyEl, Array.from(msg.text.trim())[0]);
     }
+
+    attachSwipeReply(bodyEl, msg, displayName);
 
     row.appendChild(avatar);
     row.appendChild(bodyEl);
@@ -2516,7 +3309,7 @@ function loadGifs(query) {
     .then(({ ok, data }) => {
       if (!ok || data.error === 'no-key') {
         grid.innerHTML = '<div class="gif-empty">Поиск GIF не настроен на сервере.<br>' +
-          'Владельцу сайта нужно добавить бесплатный ключ <b>TENOR_API_KEY</b> ' +
+          'Владельцу сайта нужно добавить бесплатный ключ <b>GIPHY_API_KEY</b> ' +
           '(см. README проекта).</div>';
         return;
       }
@@ -2545,7 +3338,7 @@ function loadGifs(query) {
 
 function sendGif(url) {
   if (!url || !socket) return;
-  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif } : null;
+  const replyPayload = replyingTo ? { id: replyingTo.id, name: replyingTo.name, text: replyingTo.text, image: replyingTo.image, gif: replyingTo.gif, voice: replyingTo.voice } : null;
   socket.emit('chat-message', { room, gifUrl: url, replyTo: replyPayload });
   clearReply();
   closeSheet('gifOverlay');
@@ -2572,6 +3365,64 @@ function openEmojiPicker() {
     grid.appendChild(b);
   });
   openSheet('emojiOverlay');
+}
+
+/* -----------------------------------------------------------
+   Крестики-нолики
+   ----------------------------------------------------------- */
+function openTttSheet() {
+  if (!tttLastState) renderTttState(null);
+  openSheet('tttOverlay');
+}
+
+function tttStart() {
+  socket.emit('ttt-start', { room });
+}
+
+function tttReset() {
+  socket.emit('ttt-reset', { room });
+}
+
+function tttMove(index) {
+  socket.emit('ttt-move', { room, index });
+}
+
+function renderTttState(state) {
+  tttLastState = state || null;
+  const board = document.getElementById('tttBoard');
+  const status = document.getElementById('tttStatus');
+  if (!board || !status) return;
+  board.innerHTML = '';
+
+  const cells = (state && state.board) || Array(9).fill(null);
+  cells.forEach((val, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'ttt-cell' + (val ? ' filled ' + val.toLowerCase() : '');
+    cell.textContent = val || '';
+    if (!val && state && state.active && !state.winner) {
+      cell.onclick = () => tttMove(i);
+    }
+    board.appendChild(cell);
+  });
+
+  if (!state || !state.active && !state.winner) {
+    status.textContent = 'Нажмите «Начать», чтобы сыграть';
+  } else if (state.winner === 'draw') {
+    status.textContent = 'Ничья! Жмите «Заново»';
+  } else if (state.winner) {
+    const iWon = state.winner === tttMySymbol;
+    status.textContent = tttMySymbol
+      ? (iWon ? 'Вы победили! 🎉' : 'Соперник победил')
+      : `Победили: ${state.winner}`;
+  } else if (state.active) {
+    if (!tttMySymbol) {
+      status.textContent = 'Сделайте первый ход, чтобы присоединиться';
+    } else if (state.turn === tttMySymbol) {
+      status.textContent = 'Ваш ход';
+    } else {
+      status.textContent = 'Ход соперника…';
+    }
+  }
 }
 
 /* -----------------------------------------------------------
@@ -2671,18 +3522,74 @@ function toggleNotifications() {
         try { localStorage.setItem('wt_notifications', '1'); } catch (e) {}
         updateNotifButton();
         showToast(perm === 'granted' ? 'Уведомления включены' : 'Уведомления включены (звук в приложении)');
+        if (perm === 'granted') subscribeToPush();
       });
       return;
     }
     notificationsEnabled = true;
     showToast('Уведомления включены');
+    if (Notification.permission === 'granted') subscribeToPush();
   } else {
     notificationsEnabled = false;
     showToast('Уведомления выключены');
+    unsubscribeFromPush();
   }
   try { localStorage.setItem('wt_notifications', notificationsEnabled ? '1' : '0'); } catch (e) {}
   updateNotifButton();
 }
+
+/* -----------------------------------------------------------
+   Push-уведомления (работают, даже если приложение полностью закрыто —
+   показ идёт из service worker'а, см. public/sw.js)
+   ----------------------------------------------------------- */
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+async function subscribeToPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const res = await fetch('/api/push-public-key');
+      const { publicKey } = await res.json();
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+    }
+    await fetch('/api/push-subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room, name, subscription: sub })
+    });
+  } catch (e) {
+    console.warn('Не удалось подписаться на push-уведомления:', e.message);
+  }
+}
+
+async function unsubscribeFromPush() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch('/api/push-unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room, name })
+      });
+      await sub.unsubscribe();
+    }
+  } catch (e) {
+    console.warn('Не удалось отписаться от push-уведомлений:', e.message);
+  }
+}
+
 function updateNotifButton() {
   const btn = document.getElementById('notifToggleBtn');
   if (!btn) return;
@@ -2705,12 +3612,21 @@ function playPingSound() {
   } catch (e) {}
 }
 function notifyIncomingMessage(msg) {
+  const isMention = !!(msg.mentions && msg.mentions.some((m) => m === name));
+
+  if (isMention && !document.hidden) {
+    // Приложение открыто — упоминание всё равно заметно нужно показать
+    playPingSound();
+    showToast(`${msg.name || 'Гость'} упомянул(а) вас`);
+  }
+
   if (!notificationsEnabled) return;
-  if (!document.hidden) return; // приложение открыто и на виду — незачем шуметь
+  if (!document.hidden) return; // приложение открыто и на виду — незачем шуметь дальше
   playPingSound();
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      new Notification((msg.name || 'Гость') + ' пишет', { body: msg.text || (msg.gifUrl ? '🎞 GIF' : (msg.image ? '📷 Фото' : '')), tag: 'wt-chat-' + room });
+      const title = isMention ? `${msg.name || 'Гость'} упомянул(а) вас` : (msg.name || 'Гость') + ' пишет';
+      new Notification(title, { body: msg.text || (msg.gifUrl ? '🎞 GIF' : (msg.image ? '📷 Фото' : '')), tag: 'wt-chat-' + room });
     } catch (e) {}
   }
 }
@@ -2812,6 +3728,8 @@ function leaveRoom() {
   document.getElementById('streamLinkCard').style.display = 'none';
   hideStreamFrame();
   document.getElementById('expandBtn').style.display = 'none';
+  document.getElementById('pipBtn').style.display = 'none';
+  releaseWakeLock();
   if (document.fullscreenElement) document.exitFullscreen?.();
   exitFakeFullscreen();
   currentStreamLink = null;

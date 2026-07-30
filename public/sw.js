@@ -56,3 +56,41 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// --- Push-уведомления: приходят даже когда приложение полностью закрыто ---
+// Если сейчас есть открытая и видимая вкладка приложения — не показываем
+// уведомление, т.к. сообщение уже появилось в чате через сокет "вживую".
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) {}
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const hasFocusedClient = clients.some((c) => c.focused);
+      if (hasFocusedClient) return;
+
+      return self.registration.showNotification(data.title || 'Watch Together', {
+        body: data.body || '',
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: data.tag || 'wt-push',
+        renotify: true,
+        data: { url: data.url || '/' }
+      });
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const c of clients) {
+        if ('focus' in c) return c.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});
