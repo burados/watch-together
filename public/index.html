@@ -1764,6 +1764,31 @@ try {
 function avatarPhotoUrl(filename) { return filename ? '/avatars/' + filename : ''; }
 let gifSearchDebounce = null;
 let syncing = false; // флаг, чтобы не зациклить события play/pause/seek
+let syncTargetState = null; // 'playing' | 'paused' | null — какого состояния ждём после sync-play/pause
+let syncSafetyTimer = null; // защитный таймер на случай, если целевое состояние так и не наступит
+
+// Снимает флаг syncing и чистит защитный таймер. Вызывается либо когда
+// плеер реально достиг ожидаемого состояния (play/pause), либо по таймауту,
+// если по какой-то причине событие state change не пришло вовсе.
+function clearSyncing() {
+  syncing = false;
+  syncTargetState = null;
+  if (syncSafetyTimer) { clearTimeout(syncSafetyTimer); syncSafetyTimer = null; }
+}
+
+// Ставит флаг syncing и запускает защитный таймаут. Раньше syncing снимался
+// через фиксированные 300мс, но реальная буферизация YouTube на медленном
+// интернете часто занимает дольше — флаг успевал сброситься раньше, чем
+// плеер реально начинал играть, и honest PLAYING-событие от буферизации
+// улетало на сервер как "новое" действие пользователя, зацикливая
+// play/seek/buffering между участниками. Теперь флаг держится, пока плеер
+// не придёт в ожидаемое состояние, а таймаут — лишь подстраховка.
+function startSyncing(targetState) {
+  syncing = true;
+  syncTargetState = targetState;
+  if (syncSafetyTimer) clearTimeout(syncSafetyTimer);
+  syncSafetyTimer = setTimeout(clearSyncing, 8000);
+}
 let typingTimeout = null;
 let lastTypingEmit = 0;
 let remoteTypingTimeout = null;
@@ -2114,7 +2139,7 @@ function setupSocket() {
   // не должен знать, какой именно плеер сейчас активен на клиенте, он
   // просто транслирует time/playing всем остальным.
   socket.on('sync-play', ({ time }) => {
-    syncing = true;
+    startSyncing('playing');
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
       ytPlayerInstance.playVideo();
@@ -2125,30 +2150,32 @@ function setupSocket() {
     } else {
       player.currentTime = time;
       player.play().catch(() => {});
+      // У обычного <video> нет промежуточного BUFFERING-события со своим
+      // обработчиком ниже, поэтому здесь по-прежнему снимаем флаг сами.
+      setTimeout(clearSyncing, 300);
     }
-    setTimeout(() => syncing = false, 300);
   });
 
   socket.on('sync-pause', ({ time }) => {
-    syncing = true;
+    startSyncing('paused');
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
       ytPlayerInstance.pauseVideo();
     } else {
       player.currentTime = time;
       player.pause();
+      setTimeout(clearSyncing, 300);
     }
-    setTimeout(() => syncing = false, 300);
   });
 
   socket.on('sync-seek', ({ time }) => {
-    syncing = true;
+    startSyncing(null); // после перемотки не ждём конкретного play/pause состояния
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
     } else {
       player.currentTime = time;
     }
-    setTimeout(() => syncing = false, 300);
+    setTimeout(clearSyncing, 1500);
   });
 
   socket.on('chat-message', (msg) => {
@@ -2525,7 +2552,28 @@ function showYoutubeVideo(url, from, notify) {
           }
         },
         onStateChange: (e) => {
-          if (syncing) return;
+          if (e.data === YT.PlayerState.BUFFERING) {
+            // Буферизация не эхо-событие само по себе (никуда не шлётся) —
+            // просто показываем спиннер, флаг syncing не трогаем.
+            loading.classList.add('show');
+            return;
+          }
+          if (syncing) {
+            // Мы ждём, пока плеер реально придёт в состояние, которое
+            // запросила синхронизация (play/pause). Буферизация после
+            // seekTo может занять сколько угодно — раньше флаг снимался
+            // по фиксированному таймеру и "настоящее" PLAYING-событие после
+            // долгой буферизации улетало на сервер как новое действие
+            // пользователя, зацикливая play/seek между участниками.
+            if (
+              (e.data === YT.PlayerState.PLAYING && syncTargetState === 'playing') ||
+              (e.data === YT.PlayerState.PAUSED && syncTargetState === 'paused')
+            ) {
+              clearSyncing();
+              if (e.data === YT.PlayerState.PLAYING) loading.classList.remove('show');
+            }
+            return;
+          }
           const time = ytPlayerInstance.getCurrentTime();
           if (e.data === YT.PlayerState.PLAYING) {
             loading.classList.remove('show');
@@ -2536,8 +2584,6 @@ function showYoutubeVideo(url, from, notify) {
             socket.emit('pause', { room, time });
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
             releaseWakeLock();
-          } else if (e.data === YT.PlayerState.BUFFERING) {
-            loading.classList.add('show');
           }
           // Отдельного события для "перемотки" в YT API нет — приблизительно
           // ловим её через большой скачок времени между play-событиями, для
@@ -3950,7 +3996,7 @@ async function subscribeToPush() {
     await fetch('/api/push-subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room, name, subscription: sub })
+      body: JSON.stringify({ room, name, subscription: sub, clientId })
     });
   } catch (e) {
     console.warn('Не удалось подписаться на push-уведомления:', e.message);
@@ -3966,7 +4012,7 @@ async function unsubscribeFromPush() {
       await fetch('/api/push-unsubscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room, name })
+        body: JSON.stringify({ room, name, clientId })
       });
       await sub.unsubscribe();
     }

@@ -95,6 +95,7 @@ self.addEventListener('push', (event) => {
         badge: '/icon-192.png',
         tag: data.tag || 'wt-push',
         renotify: true,
+        vibrate: Array.isArray(data.vibrate) ? data.vibrate : [40],
         data: { url: data.url || '/' }
       });
     })
