@@ -121,40 +121,74 @@ app.get('/api/push-public-key', (req, res) => {
   res.json({ publicKey: vapidKeys.publicKey });
 });
 
-// room -> { имя пользователя -> subscription }
+// room -> { clientId (устройство/браузер) -> { name, subscription } }
+// Раньше ключом было имя пользователя — если один и тот же человек заходил
+// с телефона и с ноутбука под одним именем (обычная ситуация, имя хранится
+// в localStorage), второе устройство просто затирало подписку первого, и
+// пуши стабильно переставали приходить на одно из устройств. clientId
+// уникален для каждого браузера/установки, поэтому подписки больше не
+// конфликтуют между устройствами одного человека.
 const pushSubscriptions = {};
 
 app.post('/api/push-subscribe', (req, res) => {
-  const { room, name, subscription } = req.body || {};
-  if (!room || !name || !subscription) return res.status(400).json({ error: 'room, name и subscription обязательны' });
+  const { room, name, subscription, clientId } = req.body || {};
+  if (!room || !name || !subscription || !clientId) {
+    return res.status(400).json({ error: 'room, name, clientId и subscription обязательны' });
+  }
   if (!pushSubscriptions[room]) pushSubscriptions[room] = {};
-  pushSubscriptions[room][name] = subscription;
+  pushSubscriptions[room][String(clientId).slice(0, 64)] = { name, subscription };
   res.json({ ok: true });
 });
 
 app.post('/api/push-unsubscribe', (req, res) => {
-  const { room, name } = req.body || {};
-  if (room && pushSubscriptions[room]) delete pushSubscriptions[room][name];
+  const { room, clientId } = req.body || {};
+  if (room && clientId && pushSubscriptions[room]) delete pushSubscriptions[room][String(clientId).slice(0, 64)];
   res.json({ ok: true });
 });
 
-// Шлёт push всем в комнате, кроме отправителя. Мёртвые подписки (410/404 — юзер
-// отозвал разрешение или переустановил приложение) сами вычищаются из памяти.
-function sendPushToRoom(room, excludeName, payload) {
+// Шлёт push всем в комнате, кроме устройства отправителя. Мёртвые подписки
+// (410/404 — юзер отозвал разрешение или переустановил приложение) сами
+// вычищаются из памяти. Исключаем именно устройство (clientId), а не имя —
+// иначе у человека с двумя открытыми устройствами оба молчали бы, даже
+// если развёрнуто и не на виду только одно из них.
+//
+// payload.replyToName и payload.mentionNames позволяют персонализировать
+// заголовок и вибрацию под конкретного получателя: раньше вибрация на
+// "ответ на моё сообщение" делалась только через navigator.vibrate() в
+// открытой вкладке — а эта функция по спецификации браузеров работает
+// только пока страница видима на экране. Как только приложение свёрнуто,
+// экран заблокирован или вкладка в фоне, JS почти не выполняется и
+// вибрации не было вовсе. Настоящий push, наоборот, доходит и в таких
+// случаях — поэтому вибро-паттерн теперь передаётся прямо в
+// showNotification() через service worker (см. public/sw.js), и вибрация
+// на ответ работает независимо от того, открыто приложение или нет.
+function sendPushToRoom(room, excludeClientId, payload) {
   const subs = pushSubscriptions[room];
   if (!subs) return;
-  const body = JSON.stringify(payload);
-  Object.entries(subs).forEach(([subName, subscription]) => {
-    if (subName === excludeName) return;
-    webPush.sendNotification(subscription, body).catch((err) => {
+  Object.entries(subs).forEach(([subClientId, entry]) => {
+    if (subClientId === excludeClientId) return;
+    const isReplyToThisUser = !!(payload.replyToName && entry.name === payload.replyToName);
+    const isMentionOfThisUser = !!(payload.mentionNames && payload.mentionNames.includes(entry.name));
+    const personalized = {
+      title: isReplyToThisUser
+        ? `${payload.senderName} ответил(а) вам`
+        : (isMentionOfThisUser ? `${payload.senderName} упомянул(а) вас` : payload.senderName),
+      body: payload.body,
+      tag: payload.tag,
+      url: payload.url,
+      vibrate: (isReplyToThisUser || isMentionOfThisUser) ? [60, 40, 60] : [40]
+    };
+    const body = JSON.stringify(personalized);
+    webPush.sendNotification(entry.subscription, body).catch((err) => {
       if (err.statusCode === 410 || err.statusCode === 404) {
-        delete subs[subName];
+        delete subs[subClientId];
       } else {
-        console.error(`Push-уведомление для "${subName}" не доставлено:`, err.message);
+        console.error(`Push-уведомление для "${entry.name}" не доставлено:`, err.message);
       }
     });
   });
 }
+
 
 // --- GIF-поиск (Giphy) ---
 // Публичный общий demo-ключ Giphy ("dc6zaTOxFJmzC"), который раньше можно
@@ -838,10 +872,11 @@ io.on('connection', (socket) => {
       }
     }
 
-    const isMentionPush = mentions.length > 0;
     const pushBody = trimmedText || (safeGifUrl ? '🎞 GIF' : (safeImage ? '📷 Фото' : (safeVoice ? '🎤 Голосовое сообщение' : '')));
-    sendPushToRoom(room, socket.data.name, {
-      title: isMentionPush ? `${socket.data.name} упомянул(а) вас` : socket.data.name,
+    sendPushToRoom(room, socket.data.clientId, {
+      senderName: socket.data.name,
+      replyToName: safeReplyTo ? safeReplyTo.name : null,
+      mentionNames: mentions,
       body: pushBody.slice(0, 180),
       tag: 'wt-chat-' + room,
       url: '/?room=' + encodeURIComponent(room)
