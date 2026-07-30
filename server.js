@@ -203,18 +203,19 @@ app.get('/api/gif/search', (req, res) => {
 });
 
 // --- AI-помощник в чате ("/ai <вопрос>") ---
-// Нужен свой ключ в переменной окружения ANTHROPIC_API_KEY (console.anthropic.com
-// → Get API keys). Без него команда /ai просто отвечает подсказкой о настройке,
-// остальной сайт продолжает работать как обычно.
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+// Нужен свой ключ в переменной окружения GEMINI_API_KEY (aistudio.google.com
+// → Get API key — бесплатный тариф щедрее, чем у большинства альтернатив).
+// Без него команда /ai просто отвечает подсказкой о настройке, остальной
+// сайт продолжает работать как обычно.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const AI_HISTORY_LIMIT = 24;       // сколько последних реплик чата держим для контекста
 const AI_COOLDOWN_MS = 8000;       // минимальный интервал между запросами на комнату
 const aiCooldownByRoom = {};
 
 async function askAi(room, question, askerName) {
-  if (!ANTHROPIC_API_KEY) {
-    return { ok: false, message: 'AI не настроен на сервере — добавь ANTHROPIC_API_KEY в переменные окружения (см. README).' };
+  if (!GEMINI_API_KEY) {
+    return { ok: false, message: 'AI не настроен на сервере — добавь GEMINI_API_KEY в переменные окружения (см. README).' };
   }
 
   const history = (rooms[room]?.aiHistory || [])
@@ -235,35 +236,33 @@ async function askAi(room, question, askerName) {
     `Вопрос от ${askerName}: ${question}`;
 
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+    const r = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'x-goog-api-key': GEMINI_API_KEY
       },
       body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }]
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: { maxOutputTokens: 400 }
       })
     });
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
-      console.error('Anthropic API error:', r.status, errText.slice(0, 300));
+      console.error('Gemini API error:', r.status, errText.slice(0, 300));
       return { ok: false, message: 'AI сейчас недоступен, попробуйте чуть позже.' };
     }
     const data = await r.json();
-    const answer = (data.content || [])
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text)
+    const answer = (data.candidates?.[0]?.content?.parts || [])
+      .map((part) => part.text || '')
       .join('\n')
       .trim();
     if (!answer) return { ok: false, message: 'AI не смог сформулировать ответ, попробуйте переформулировать вопрос.' };
     return { ok: true, answer };
   } catch (err) {
-    console.error('Ошибка запроса к Anthropic API:', err.message);
+    console.error('Ошибка запроса к Gemini API:', err.message);
     return { ok: false, message: 'AI сейчас недоступен, попробуйте чуть позже.' };
   }
 }
