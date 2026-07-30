@@ -690,6 +690,7 @@ html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
   padding:10px 12px;
   background:var(--card);
   border-bottom:1px solid var(--border-soft);
+  position:relative;
 }
 .upload-pill{
   display:inline-flex; align-items:center; gap:7px;
@@ -705,6 +706,30 @@ html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
 .upload-pill:hover{ border-color:var(--primary); color:var(--text); background:var(--surface-2); }
 .upload-pill svg{ width:15px; height:15px; }
 input[type=file]{ display:none; }
+
+.upload-menu{
+  display:none; flex-direction:column; gap:2px;
+  position:absolute; top:calc(100% + 8px); left:12px; z-index:20;
+  background:rgba(29,29,37,.97);
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  border:1px solid var(--border); border-radius:16px;
+  padding:6px; min-width:230px;
+  box-shadow:var(--shadow-md);
+  animation:slide-up-sm .16s var(--ease);
+}
+.upload-menu.show{ display:flex; }
+.upload-menu-item{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px; border-radius:11px;
+  font-size:13.5px; font-weight:600; color:var(--text);
+  text-align:left; width:100%;
+  transition:background .15s var(--ease);
+}
+.upload-menu-item:hover{ background:var(--surface-2); }
+.upload-menu-item:active{ background:var(--surface); }
+.upload-menu-item svg{ width:17px; height:17px; flex-shrink:0; color:var(--text-secondary); }
+.upload-menu-backdrop{ display:none; position:fixed; inset:0; z-index:19; }
+.upload-menu-backdrop.show{ display:block; }
 
 .select-wrap{ position:relative; flex:1; min-width:150px; max-width:44vw; }
 .select-wrap::after{
@@ -802,19 +827,19 @@ select{
 }
 .msg-swipe-icon svg{ width:14px; height:14px; }
 .msg-row.own .msg-body{
-  background:linear-gradient(135deg, var(--primary-hover), var(--primary));
-  border-color:transparent;
+  background:linear-gradient(135deg, rgba(221,186,87,.18), rgba(201,168,78,.07));
+  border:1px solid rgba(201,168,78,.32);
   border-bottom-left-radius:18px;
   border-bottom-right-radius:5px;
-  box-shadow:0 2px 4px rgba(201,168,78,.2), 0 8px 20px rgba(201,168,78,.22);
+  box-shadow:0 1px 2px rgba(0,0,0,.14), 0 6px 16px rgba(0,0,0,.08);
 }
-.msg-row.own .msg-text{ color:var(--primary-ink); }
-.msg-row.own .msg-time{ color:var(--primary-ink); opacity:.6; }
+.msg-row.own .msg-text{ color:var(--text); }
+.msg-row.own .msg-time{ color:var(--text-faint); }
 .msg-name{
   font-size:12.5px; font-weight:700; color:var(--accent);
   margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.msg-row.own .msg-name{ color:var(--primary-ink); opacity:.75; }
+.msg-row.own .msg-name{ color:var(--primary); opacity:1; }
 .msg-line{ display:flex; align-items:baseline; gap:8px; }
 .msg-text{ flex:1; min-width:0; font-size:13.5px; line-height:1.45; color:var(--text); word-break:break-word; white-space:pre-wrap; }
 .msg-text-emoji-only{
@@ -1375,20 +1400,29 @@ select{
         </div>
 
         <div class="stage-toolbar">
-          <label class="upload-pill ripple-host">
+          <button type="button" class="upload-pill ripple-host" onclick="toggleUploadMenu()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
             Загрузить
-            <input type="file" id="fileInput" accept="video/*" onchange="handleUpload(event)" />
-          </label>
-          <div class="select-wrap">
-            <select id="videoSelect" onchange="pickExisting()">
-              <option value="">— выбрать уже загруженное —</option>
-            </select>
-          </div>
-          <button type="button" class="upload-pill ripple-host" onclick="promptStreamLink()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
-            Ссылка на видео
           </button>
+          <div class="upload-menu-backdrop" id="uploadMenuBackdrop" onclick="closeUploadMenu()"></div>
+          <div class="upload-menu" id="uploadMenu">
+            <button type="button" class="upload-menu-item" onclick="closeUploadMenu(); document.getElementById('fileInput').click();">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+              Загрузить файл
+            </button>
+            <button type="button" class="upload-menu-item" onclick="closeUploadMenu(); openExistingVideoPicker();">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+              Выбрать уже загруженное
+            </button>
+            <button type="button" class="upload-menu-item" onclick="closeUploadMenu(); promptStreamLink();">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
+              Ссылка на видео
+            </button>
+          </div>
+          <input type="file" id="fileInput" accept="video/*" onchange="handleUpload(event)" />
+          <select id="videoSelect" onchange="pickExisting()" style="display:none;">
+            <option value="">— выбрать уже загруженное —</option>
+          </select>
           <span id="uploadProgress"></span>
         </div>
       </div>
@@ -2548,6 +2582,34 @@ async function loadVideoList() {
 function pickExisting() {
   const filename = document.getElementById('videoSelect').value;
   if (filename) showVideo(filename, true);
+}
+
+function toggleUploadMenu() {
+  const menu = document.getElementById('uploadMenu');
+  const backdrop = document.getElementById('uploadMenuBackdrop');
+  const show = !menu.classList.contains('show');
+  menu.classList.toggle('show', show);
+  backdrop.classList.toggle('show', show);
+}
+function closeUploadMenu() {
+  document.getElementById('uploadMenu').classList.remove('show');
+  document.getElementById('uploadMenuBackdrop').classList.remove('show');
+}
+function openExistingVideoPicker() {
+  const select = document.getElementById('videoSelect');
+  if (!select.options || select.options.length <= 1) {
+    showToast('Пока нет ранее загруженных видео');
+    return;
+  }
+  if (typeof select.showPicker === 'function') {
+    try { select.showPicker(); return; } catch (e) { /* fall through */ }
+  }
+  select.style.display = 'block';
+  select.style.position = 'fixed';
+  select.style.opacity = '0';
+  select.focus();
+  select.click();
+  setTimeout(() => { select.style.display = 'none'; select.style.position = ''; select.style.opacity = ''; }, 300);
 }
 
 function openImageLightbox(url) {
