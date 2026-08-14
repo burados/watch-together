@@ -10,6 +10,28 @@
     var t = localStorage.getItem('wt_theme');
     if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
   } catch (e) {}
+  try {
+    // Акцентный цвет применяем до отрисовки — иначе будет вспышка золотого
+    // цвета по умолчанию перед подстановкой сохранённого выбора.
+    var ACCENTS = {
+      gold:   { primary:'#C9A84E', hover:'#DDBA57', soft:'rgba(201,168,78,.14)',  ink:'#1a1508' },
+      violet: { primary:'#7C5CFF', hover:'#9B82FF', soft:'rgba(124,92,255,.16)', ink:'#ffffff' },
+      blue:   { primary:'#6C8CFF', hover:'#8AA3FF', soft:'rgba(108,140,255,.16)', ink:'#ffffff' },
+      mint:   { primary:'#42D392', hover:'#5FE0A8', soft:'rgba(66,211,146,.16)', ink:'#06231a' },
+      coral:  { primary:'#FF5A76', hover:'#FF7A90', soft:'rgba(255,90,118,.16)', ink:'#ffffff' },
+      orange: { primary:'#FF9F45', hover:'#FFB768', soft:'rgba(255,159,69,.16)', ink:'#2b1400' },
+      pink:   { primary:'#FF6FB0', hover:'#FF8FC2', soft:'rgba(255,111,176,.16)', ink:'#2b0018' },
+      cyan:   { primary:'#38D6E0', hover:'#5FE4EC', soft:'rgba(56,214,224,.16)', ink:'#002a2d' }
+    };
+    window.WT_ACCENTS = ACCENTS;
+    var a = localStorage.getItem('wt_accent');
+    var preset = ACCENTS[a] || ACCENTS.gold;
+    var root = document.documentElement.style;
+    root.setProperty('--primary', preset.primary);
+    root.setProperty('--primary-hover', preset.hover);
+    root.setProperty('--primary-soft', preset.soft);
+    root.setProperty('--primary-ink', preset.ink);
+  } catch (e) {}
 })();
 </script>
 
@@ -169,16 +191,55 @@ input, select{ font-family:inherit; }
 }
 .btn-danger:hover{ background:rgba(255,90,118,.22); }
 
+.ttt-status{
+  text-align:center; font-size:14px; font-weight:600; color:var(--text-dim);
+  margin-bottom:14px; min-height:20px;
+}
+.ttt-players{
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  margin-bottom:16px;
+}
+.ttt-player{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 14px; border-radius:var(--radius-full);
+  border:1px solid var(--border); background:var(--surface-2);
+  font-size:13px; font-weight:700; color:var(--text-dim);
+  max-width:130px; transition:border-color .2s, background .2s, color .2s;
+}
+.ttt-player .ttt-player-symbol{
+  width:22px; height:22px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:800; background:var(--surface-3, rgba(255,255,255,.06));
+}
+.ttt-player .ttt-player-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ttt-player.x .ttt-player-symbol{ color:var(--primary, #6c8cff); }
+.ttt-player.o .ttt-player-symbol{ color:#ff7a7a; }
+.ttt-player.empty{ opacity:.5; font-style:italic; font-weight:500; }
+.ttt-player.active-turn{
+  border-color:var(--primary, #6c8cff); color:var(--text);
+  background:rgba(108,140,255,.1);
+  animation:pulse-dot 2s infinite;
+}
+.ttt-player.winner{ border-color:#42d392; color:var(--text); background:rgba(66,211,146,.12); }
+.ttt-vs{ font-size:12px; font-weight:700; color:var(--text-dim); opacity:.6; }
+
+.ttt-board{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:8px;
+  max-width:280px; margin:0 auto;
+}
 .ttt-cell{
   aspect-ratio:1; border-radius:14px; border:1px solid var(--border);
   background:var(--surface-2); font-size:36px; font-weight:800;
   display:flex; align-items:center; justify-content:center; cursor:pointer;
-  transition:background .15s, transform .1s; user-select:none;
+  transition:background .15s, transform .1s, border-color .2s; user-select:none;
 }
 .ttt-cell:active{ transform:scale(.94); }
 .ttt-cell.filled{ cursor:default; }
 .ttt-cell.x{ color:var(--primary, #6c8cff); }
 .ttt-cell.o{ color:#ff7a7a; }
+.ttt-cell.clickable:hover{ border-color:var(--border-strong); background:var(--surface-3, rgba(255,255,255,.06)); }
+.ttt-cell.win-line{ border-color:#42d392; background:rgba(66,211,146,.14); animation:scale-in .2s var(--ease); }
+.ttt-cell span{ animation:scale-in .18s var(--ease-spring); }
 .icon-btn{
   width:40px; height:40px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
@@ -403,6 +464,13 @@ input, select{ font-family:inherit; }
    ============================================================= */
 #room{ display:none; }
 body.in-room, body.in-room html{ overflow:hidden; }
+/* В комнате идёт просмотр видео — фоновые декоративные анимации (блюр,
+   зерно-текстура) выключаем, чтобы не грузить рендер лишними перерисовками
+   и не подъедать кадры видео на слабых устройствах. */
+body.in-room .bg-glow,
+body.in-room .bg-glow::before,
+body.in-room .bg-glow::after,
+body.in-room .grain-overlay{ animation-play-state:paused; }
 
 .room{
   display:flex; flex-direction:column;
@@ -681,6 +749,20 @@ html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
   color:var(--text-faint); transition:background .18s var(--ease), color .18s var(--ease);
 }
 .theme-switch button.active{ background:var(--primary); color:var(--primary-ink); }
+
+.accent-swatches{
+  display:flex; flex-wrap:wrap; gap:8px; max-width:190px; justify-content:flex-end;
+}
+.accent-swatch{
+  width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  border:2px solid transparent; padding:0; cursor:pointer;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+  transition: transform .15s var(--ease), border-color .15s var(--ease);
+}
+.accent-swatch:active{ transform:scale(.9); }
+.accent-swatch.active{
+  border-color:var(--text); transform:scale(1.1);
+}
 
 /* keyboard-open squeeze (mobile) */
 @media (max-width:899px){
@@ -1650,6 +1732,10 @@ select{
         <button id="themeLightBtn" onclick="setTheme('light')">Светлая</button>
       </div>
     </div>
+    <div class="settings-row" style="align-items:flex-start;">
+      <span class="label" style="padding-top:6px;">Акцентный цвет</span>
+      <div class="accent-swatches" id="accentSwatches"></div>
+    </div>
     <div class="settings-row">
       <span class="label">Уведомления о сообщениях</span>
       <button class="icon-btn ripple-host" id="notifToggleBtn" onclick="toggleNotifications()" aria-label="Уведомления">
@@ -1718,11 +1804,18 @@ select{
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">Крестики-нолики <button class="icon-btn" onclick="closeSheet('tttOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
-    <div id="tttStatus" style="text-align:center; font-size:14px; color:var(--text-dim); margin-bottom:14px;">Нажмите «Начать», чтобы сыграть</div>
-    <div id="tttBoard" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; max-width:280px; margin:0 auto;"></div>
-    <div style="display:flex; gap:8px; margin-top:16px;">
-      <button type="button" class="btn btn-primary btn-block ripple-host" onclick="tttStart()">Начать</button>
-      <button type="button" class="btn btn-ghost btn-block ripple-host" onclick="tttReset()">Заново</button>
+
+    <div id="tttPlayers" class="ttt-players"></div>
+
+    <div id="tttStatus" class="ttt-status">Нажмите «Начать», чтобы сыграть</div>
+    <div id="tttBoard" class="ttt-board"></div>
+
+    <div id="tttJoinRow" style="display:none; margin-top:16px;">
+      <button type="button" class="btn btn-primary btn-block ripple-host" onclick="tttJoin()">Присоединиться</button>
+    </div>
+    <div id="tttActionRow" style="display:flex; gap:8px; margin-top:16px;">
+      <button type="button" class="btn btn-primary btn-block ripple-host" id="tttStartBtn" onclick="tttStart()">Начать</button>
+      <button type="button" class="btn btn-ghost btn-block ripple-host" id="tttResetBtn" onclick="tttReset()" style="display:none;">Заново</button>
     </div>
   </div>
 </div>
@@ -2118,6 +2211,12 @@ function setupSocket() {
 
   socket.on('ttt-state', (state) => renderTttState(state));
   socket.on('ttt-you', ({ symbol }) => { tttMySymbol = symbol; renderTttState(tttLastState); });
+  socket.on('ttt-player-joined', ({ name, symbol }) => {
+    showToast(`${name} присоединился(-ась) к крестикам-ноликам (${symbol})`);
+  });
+  socket.on('ttt-player-left', ({ name, symbol }) => {
+    showToast(`${name || 'Игрок'} вышел(-а) из игры (${symbol}) — ждём замену`);
+  });
 
   socket.on('video-selected', ({ filename }) => {
     showVideo(filename, false);
@@ -3788,7 +3887,17 @@ function openEmojiPicker() {
 
 /* -----------------------------------------------------------
    Крестики-нолики
+   Второй игрок присоединяется явной кнопкой «Присоединиться» (а не
+   первым случайным кликом по клетке), карточки X/O всегда показывают
+   имена обоих участников и подсвечивают, чей сейчас ход — так сразу
+   видно, кто в игре, а кто ещё нет.
    ----------------------------------------------------------- */
+const TTT_WIN_LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+function tttWinningLine(board, symbol) {
+  return TTT_WIN_LINES.find(([a,b,c]) => board[a] === symbol && board[b] === symbol && board[c] === symbol) || null;
+}
+
 function openTttSheet() {
   if (!tttLastState) renderTttState(null);
   openSheet('tttOverlay');
@@ -3796,6 +3905,10 @@ function openTttSheet() {
 
 function tttStart() {
   socket.emit('ttt-start', { room });
+}
+
+function tttJoin() {
+  socket.emit('ttt-join', { room });
 }
 
 function tttReset() {
@@ -3810,37 +3923,76 @@ function renderTttState(state) {
   tttLastState = state || null;
   const board = document.getElementById('tttBoard');
   const status = document.getElementById('tttStatus');
-  if (!board || !status) return;
-  board.innerHTML = '';
+  const playersEl = document.getElementById('tttPlayers');
+  const joinRow = document.getElementById('tttJoinRow');
+  const startBtn = document.getElementById('tttStartBtn');
+  const resetBtn = document.getElementById('tttResetBtn');
+  if (!board || !status || !playersEl) return;
 
+  const names = (state && state.names) || { X: null, O: null };
+  const winLine = state && state.winner && state.winner !== 'draw'
+    ? tttWinningLine(state.board, state.winner)
+    : null;
+
+  // --- карточки игроков X / O ---
+  playersEl.innerHTML = '';
+  ['X', 'O'].forEach((sym) => {
+    const name = names[sym];
+    const card = document.createElement('div');
+    card.className = 'ttt-player ' + sym.toLowerCase() + (!name ? ' empty' : '');
+    if (name && state.winner === sym) card.classList.add('winner');
+    else if (name && state.active && !state.winner && state.turn === sym) card.classList.add('active-turn');
+    card.innerHTML = `<span class="ttt-player-symbol">${sym}</span><span class="ttt-player-name">${name ? escapeHtml(name) : 'свободно'}</span>`;
+    playersEl.appendChild(card);
+    if (sym === 'X') {
+      const vs = document.createElement('span');
+      vs.className = 'ttt-vs';
+      vs.textContent = 'vs';
+      playersEl.appendChild(vs);
+    }
+  });
+
+  // --- доска ---
+  board.innerHTML = '';
   const cells = (state && state.board) || Array(9).fill(null);
+  const canClickToMove = !!(state && state.active && !state.winner && tttMySymbol && state.turn === tttMySymbol);
   cells.forEach((val, i) => {
     const cell = document.createElement('div');
-    cell.className = 'ttt-cell' + (val ? ' filled ' + val.toLowerCase() : '');
-    cell.textContent = val || '';
-    if (!val && state && state.active && !state.winner) {
-      cell.onclick = () => tttMove(i);
-    }
+    let cls = 'ttt-cell' + (val ? ' filled ' + val.toLowerCase() : '');
+    if (!val && canClickToMove) cls += ' clickable';
+    if (winLine && winLine.includes(i)) cls += ' win-line';
+    cell.className = cls;
+    if (val) cell.innerHTML = `<span>${val}</span>`;
+    if (!val && canClickToMove) cell.onclick = () => tttMove(i);
     board.appendChild(cell);
   });
 
-  if (!state || !state.active && !state.winner) {
+  // --- кнопки ---
+  const playerCount = (names.X ? 1 : 0) + (names.O ? 1 : 0);
+  const iAmIn = tttMySymbol && names[tttMySymbol];
+  const canJoin = !!state && !iAmIn && playerCount < 2;
+  joinRow.style.display = canJoin ? 'block' : 'none';
+  startBtn.style.display = (!state || playerCount === 0) ? 'block' : 'none';
+  resetBtn.style.display = (state && (state.winner || playerCount > 0)) ? 'block' : 'none';
+
+  // --- статус ---
+  if (!state || playerCount === 0) {
     status.textContent = 'Нажмите «Начать», чтобы сыграть';
   } else if (state.winner === 'draw') {
     status.textContent = 'Ничья! Жмите «Заново»';
   } else if (state.winner) {
     const iWon = state.winner === tttMySymbol;
     status.textContent = tttMySymbol
-      ? (iWon ? 'Вы победили! 🎉' : 'Соперник победил')
-      : `Победили: ${state.winner}`;
-  } else if (state.active) {
-    if (!tttMySymbol) {
-      status.textContent = 'Сделайте первый ход, чтобы присоединиться';
-    } else if (state.turn === tttMySymbol) {
-      status.textContent = 'Ваш ход';
-    } else {
-      status.textContent = 'Ход соперника…';
-    }
+      ? (iWon ? 'Вы победили! 🎉' : `Победил(а) ${names[state.winner] || state.winner} 🎉`)
+      : `Победил(а): ${names[state.winner] || state.winner}`;
+  } else if (playerCount < 2) {
+    status.textContent = iAmIn ? 'Ждём второго игрока…' : 'Нажмите «Присоединиться», чтобы сыграть';
+  } else if (!iAmIn) {
+    status.textContent = 'Игра уже идёт — дождитесь новой партии';
+  } else if (state.turn === tttMySymbol) {
+    status.textContent = 'Ваш ход';
+  } else {
+    status.textContent = `Ход соперника (${names[state.turn] || state.turn})…`;
   }
 }
 
@@ -3878,7 +4030,11 @@ function closeChatMoreMenu() {
   document.getElementById('chatMoreMenuBackdrop').classList.remove('show');
 }
 
-function openSettings() { openSheet('settingsOverlay'); }
+function openSettings() {
+  updateThemeButtons();
+  renderAccentSwatches();
+  openSheet('settingsOverlay');
+}
 function openSheet(id) { document.getElementById(id).classList.add('show'); }
 function closeSheet(id) { document.getElementById(id).classList.remove('show'); }
 
@@ -3926,6 +4082,38 @@ function updateThemeButtons() {
   if (!darkBtn || !lightBtn) return;
   darkBtn.classList.toggle('active', !isLight);
   lightBtn.classList.toggle('active', isLight);
+}
+
+/* -----------------------------------------------------------
+   Accent color
+   ----------------------------------------------------------- */
+function setAccent(id) {
+  const preset = (window.WT_ACCENTS || {})[id];
+  if (!preset) return;
+  const root = document.documentElement.style;
+  root.setProperty('--primary', preset.primary);
+  root.setProperty('--primary-hover', preset.hover);
+  root.setProperty('--primary-soft', preset.soft);
+  root.setProperty('--primary-ink', preset.ink);
+  try { localStorage.setItem('wt_accent', id); } catch (e) {}
+  renderAccentSwatches();
+}
+function renderAccentSwatches() {
+  const wrap = document.getElementById('accentSwatches');
+  if (!wrap) return;
+  const accents = window.WT_ACCENTS || {};
+  let current = 'gold';
+  try { current = localStorage.getItem('wt_accent') || 'gold'; } catch (e) {}
+  wrap.innerHTML = '';
+  Object.keys(accents).forEach((id) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'accent-swatch ripple-host' + (id === current ? ' active' : '');
+    btn.style.background = accents[id].primary;
+    btn.setAttribute('aria-label', id);
+    btn.onclick = () => setAccent(id);
+    wrap.appendChild(btn);
+  });
 }
 
 /* -----------------------------------------------------------
