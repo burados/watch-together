@@ -582,6 +582,7 @@ function tttPublicState(game) {
     turn: game.turn,
     winner: game.winner,
     active: game.active,
+    names: { X: game.names.X || null, O: game.names.O || null },
     playerCount: Object.keys(game.players).length
   };
 }
@@ -950,18 +951,45 @@ io.on('connection', (socket) => {
     io.to(room).emit('message-reaction-update', { messageId, reactions: msgReactions });
   });
 
-  // Начать новую партию в крестики-нолики. Тот, кто нажал "Начать" — играет за X.
+  // Начать новую партию в крестики-нолики. Тот, кто нажал "Начать" — играет за X,
+  // второй игрок присоединяется явной кнопкой «Присоединиться» (ttt-join),
+  // а не случайным первым кликом по клетке — так с самого начала видно,
+  // кто в игре, а кто ещё нет.
   socket.on('ttt-start', ({ room }) => {
     if (!room || !rooms[room]) return;
+    const name = socket.data.name || 'Гость';
     rooms[room].ttt = {
       board: Array(9).fill(null),
       turn: 'X',
       players: { [socket.id]: 'X' },
+      names: { X: name, O: null },
       winner: null,
       active: true
     };
     socket.emit('ttt-you', { symbol: 'X' });
     io.to(room).emit('ttt-state', tttPublicState(rooms[room].ttt));
+  });
+
+  // Явное присоединение второго (или заменяющего выбывшего) игрока
+  socket.on('ttt-join', ({ room }) => {
+    const game = rooms[room]?.ttt;
+    if (!game) return;
+    if (game.players[socket.id]) {
+      socket.emit('ttt-you', { symbol: game.players[socket.id] });
+      return;
+    }
+    if (Object.keys(game.players).length >= 2) return; // мест нет
+
+    const takenSymbols = Object.values(game.players);
+    const symbol = takenSymbols.includes('X') ? 'O' : 'X';
+    const name = socket.data.name || 'Гость';
+    game.players[socket.id] = symbol;
+    game.names[symbol] = name;
+    if (Object.keys(game.players).length === 2) game.active = true;
+
+    socket.emit('ttt-you', { symbol });
+    io.to(room).emit('ttt-state', tttPublicState(game));
+    io.to(room).emit('ttt-player-joined', { name, symbol });
   });
 
   socket.on('ttt-move', ({ room, index }) => {
@@ -970,15 +998,8 @@ io.on('connection', (socket) => {
     if (!game || !game.active || game.winner) return;
     if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex > 8) return;
 
-    let mySymbol = game.players[socket.id];
-    if (!mySymbol) {
-      // Второй игрок: назначаем ему свободный символ, если место ещё есть
-      if (Object.keys(game.players).length >= 2) return;
-      mySymbol = Object.values(game.players).includes('X') ? 'O' : 'X';
-      game.players[socket.id] = mySymbol;
-      socket.emit('ttt-you', { symbol: mySymbol });
-    }
-
+    const mySymbol = game.players[socket.id];
+    if (!mySymbol) return; // ещё не присоединился — сначала ttt-join
     if (mySymbol !== game.turn) return; // не твой ход
     if (game.board[cellIndex]) return; // клетка занята
 
@@ -1000,16 +1021,20 @@ io.on('connection', (socket) => {
     game.board = Array(9).fill(null);
     game.turn = 'X';
     game.winner = null;
-    game.active = true;
+    game.active = Object.keys(game.players).length === 2;
     io.to(room).emit('ttt-state', tttPublicState(game));
   });
 
   socket.on('disconnect', () => {
     const game = rooms[currentRoom]?.ttt;
     if (game && game.players[socket.id]) {
+      const leftSymbol = game.players[socket.id];
+      const leftName = game.names[leftSymbol];
       delete game.players[socket.id];
-      game.active = false; // ждём, пока кто-то нажмёт "Начать" заново
+      game.names[leftSymbol] = null;
+      game.active = false; // ждём, пока кто-то присоединится вместо выбывшего
       io.to(currentRoom).emit('ttt-state', tttPublicState(game));
+      io.to(currentRoom).emit('ttt-player-left', { name: leftName, symbol: leftSymbol });
     }
 
     if (!currentRoom || !rooms[currentRoom]) return;
