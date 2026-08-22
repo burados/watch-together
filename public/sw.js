@@ -3,7 +3,7 @@
 // Кэшируем только статическую оболочку. Видео, сокеты и API — всегда напрямую из сети,
 // их кэшировать нельзя (список видео и состояние комнаты постоянно меняются).
 
-const CACHE_NAME = 'watch-together-shell-v2'; // версия увеличена, чтобы старый кэш точно сбросился после этого обновления
+const CACHE_NAME = 'roomly-shell-v3'; // версия увеличена, чтобы старый кэш точно сбросился после этого обновления
 const SHELL_FILES = [
   '/',
   '/manifest.json',
@@ -89,7 +89,7 @@ self.addEventListener('push', (event) => {
       const hasFocusedClient = clients.some((c) => c.focused);
       if (hasFocusedClient) return;
 
-      return self.registration.showNotification(data.title || 'Watch Together', {
+      return self.registration.showNotification(data.title || 'Roomly', {
         body: data.body || '',
         icon: '/icon-192.png',
         badge: '/icon-192.png',

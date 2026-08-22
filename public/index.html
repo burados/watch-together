@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
-<title>Watch: burado × otroverr</title>
+<title>Roomly</title>
 <script>
 (function(){
   try {
@@ -45,7 +45,7 @@
 <!-- iOS: чтобы при добавлении на экран открывалось как отдельное приложение -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Вместе" />
+<meta name="apple-mobile-web-app-title" content="Roomly" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2638,7 +2638,7 @@ function showYoutubeVideo(url, from, notify) {
           if ('mediaSession' in navigator) {
             navigator.mediaSession.metadata = new MediaMetadata({
               title: 'Смотрим вместе',
-              artist: room ? `Комната ${room}` : 'Watch Together',
+              artist: room ? `Комната ${room}` : 'Roomly',
               artwork: [
                 { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
                 { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
@@ -2680,6 +2680,12 @@ function showYoutubeVideo(url, from, notify) {
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
             requestWakeLock();
           } else if (e.data === YT.PlayerState.PAUSED) {
+            if (backgroundedRecently && document.visibilityState !== 'visible') {
+              // Как и для обычного видео — не считаем это настоящей паузой,
+              // пробуем продолжить воспроизведение и ничего не рассылаем.
+              try { ytPlayerInstance.playVideo(); } catch (e) {}
+              return;
+            }
             socket.emit('pause', { room, time });
             if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
             releaseWakeLock();
@@ -2717,10 +2723,29 @@ function releaseWakeLock() {
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
 }
 
+// Флаг "приложение только что было свёрнуто". Пока он включён, паузу,
+// которую вызвал сам браузер/ОС при сворачивании (а не нажатие пользователя),
+// не рассылаем остальным зрителям и пытаемся сразу возобновить воспроизведение —
+// см. player.onpause и обработчик YT.PlayerState.PAUSED ниже.
+let backgroundedRecently = false;
+
 document.addEventListener('visibilitychange', () => {
   const player = document.getElementById('player');
-  if (document.visibilityState === 'visible' && player && !player.paused && !wakeLock) {
-    requestWakeLock();
+  if (document.visibilityState === 'hidden') {
+    backgroundedRecently = true;
+    // Пытаемся не дать видео остановиться при сворачивании: если это
+    // обычный <video> и он сейчас играет — уходим в Picture-in-Picture,
+    // это единственный надёжный способ продолжить показ в фоне.
+    if (player && player.style.display !== 'none' && !player.paused &&
+        document.pictureInPictureEnabled && player.requestPictureInPicture &&
+        !document.pictureInPictureElement) {
+      player.requestPictureInPicture().catch(() => {});
+    }
+  } else if (document.visibilityState === 'visible') {
+    if (player && !player.paused && !wakeLock) requestWakeLock();
+    // Небольшая задержка перед сбросом флага — автопауза браузера при
+    // сворачивании иногда приходит с опозданием, уже после возврата в приложение.
+    setTimeout(() => { backgroundedRecently = false; }, 1500);
   }
 });
 
@@ -2728,7 +2753,7 @@ function setupMediaSession(player) {
   if (!('mediaSession' in navigator)) return;
   navigator.mediaSession.metadata = new MediaMetadata({
     title: 'Смотрим вместе',
-    artist: room ? `Комната ${room}` : 'Watch Together',
+    artist: room ? `Комната ${room}` : 'Roomly',
     artwork: [
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
@@ -2780,6 +2805,12 @@ function wirePlayerCommon(player) {
     requestWakeLock();
   };
   player.onpause = () => {
+    if (backgroundedRecently && document.visibilityState !== 'visible') {
+      // Пауза вызвана сворачиванием приложения, а не пользователем —
+      // не шлём её остальным зрителям, пробуем продолжить воспроизведение.
+      player.play().catch(() => {});
+      return;
+    }
     if (!syncing) socket.emit('pause', { room, time: player.currentTime });
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     releaseWakeLock();
@@ -4123,7 +4154,7 @@ function shareRoom() {
   if (!room) return;
   const url = location.origin + location.pathname + '?room=' + encodeURIComponent(room);
   if (navigator.share) {
-    navigator.share({ title: 'Watch together', text: 'Присоединяйся к комнате «' + room + '»', url })
+    navigator.share({ title: 'Roomly', text: 'Присоединяйся к комнате «' + room + '»', url })
       .catch(() => {});
   } else {
     copyRoomCode();

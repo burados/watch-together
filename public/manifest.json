@@ -1,6 +1,6 @@
 {
-  "name": "Вместе — смотрим онлайн",
-  "short_name": "Вместе",
+  "name": "Roomly",
+  "short_name": "Roomly",
   "description": "Синхронный просмотр видео с друзьями и чат",
   "start_url": "/",
   "scope": "/",
