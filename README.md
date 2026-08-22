@@ -85,11 +85,11 @@ Gemini API — например «/ai кто этот актёр», «/ai объ
 
 1. Зарегистрируйся на [railway.app](https://railway.app) (можно через GitHub или Google)
 2. Создай пустой репозиторий на GitHub через мобильное приложение GitHub или сайт github.com:
-   - New repository → назови, например, `watch-together`
+   - New repository → назови, например, `roomly`
    - Загрузи туда все файлы этого проекта (в GitHub есть кнопка "Add file → Upload files", это работает в мобильном браузере)
 3. В Railway: New Project → Deploy from GitHub repo → выбери свой репозиторий
 4. Railway сам определит Node.js проект и запустит `npm install` + `npm start`
-5. В настройках проекта включи **Public Networking**, чтобы получить публичную ссылку (что-то вроде `watch-together-production.up.railway.app`)
+5. В настройках проекта включи **Public Networking**, чтобы получить публичную ссылку (что-то вроде `roomly-production.up.railway.app`)
 6. Готово — открывай ссылку с телефона и зови друзей
 
 **Альтернатива — Render.com**: тот же принцип (New Web Service → подключить GitHub репозиторий → Build command `npm install`, Start command `npm start`), тоже полностью настраивается из браузера.

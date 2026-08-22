@@ -113,7 +113,7 @@ if (fs.existsSync(VAPID_FILE)) {
   fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
   console.log('Сгенерированы новые VAPID-ключи для push-уведомлений');
 }
-webPush.setVapidDetails('mailto:watch-together@example.com', vapidKeys.publicKey, vapidKeys.privateKey);
+webPush.setVapidDetails('mailto:roomly@example.com', vapidKeys.publicKey, vapidKeys.privateKey);
 
 app.use(express.json());
 

@@ -1,5 +1,5 @@
 {
-  "name": "watch-together",
+  "name": "roomly",
   "version": "1.0.0",
   "description": "Смотрим фильмы вместе онлайн",
   "main": "server.js",
