@@ -49,7 +49,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
 <style>
 /* =============================================================
    0. Tokens
@@ -156,9 +156,10 @@ input, select{ font-family:inherit; }
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
   font-weight:700; font-size:14.5px; letter-spacing:.01em;
   padding:14px 20px; border-radius:var(--radius-md);
-  transition:transform .15s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease), color .2s var(--ease), opacity .2s var(--ease);
+  transition:transform .15s var(--ease), box-shadow .2s var(--ease), background .2s var(--ease), color .2s var(--ease), opacity .2s var(--ease), border-color .2s var(--ease);
   white-space:nowrap;
 }
+.btn svg{ width:17px; height:17px; flex-shrink:0; }
 .btn:active{ transform:scale(.96); }
 .btn-lg{ padding:14px 20px; font-size:15px; border-radius:var(--radius-md); }
 .btn-block{ width:100%; }
@@ -168,7 +169,7 @@ input, select{ font-family:inherit; }
   color:var(--primary-ink);
   box-shadow:0 10px 26px rgba(201,168,78,.28);
 }
-.btn-primary:hover{ box-shadow:0 14px 34px rgba(201,168,78,.4); transform:translateY(-1px); }
+.btn-primary:hover{ box-shadow:0 16px 38px rgba(201,168,78,.45); transform:translateY(-2px); }
 
 .btn-accent{
   background:linear-gradient(135deg, #8f73ff, var(--accent));
@@ -181,8 +182,9 @@ input, select{ font-family:inherit; }
   background:var(--surface);
   color:var(--text);
   border:1px solid var(--border);
+  box-shadow:0 6px 18px rgba(0,0,0,.18);
 }
-.btn-ghost:hover{ background:var(--surface-2); border-color:var(--border-strong); }
+.btn-ghost:hover{ background:var(--surface-2); border-color:var(--accent); box-shadow:0 12px 28px rgba(124,92,255,.22); transform:translateY(-2px); color:var(--accent); }
 
 .btn-danger{
   background:var(--danger-soft);
@@ -313,45 +315,35 @@ input, select{ font-family:inherit; }
 }
 
 .logo-lockup{ text-align:center; margin-bottom:8px; animation:slide-up .6s var(--ease); }
-.logo-mark{
-  width:48px; height:48px; margin:0 auto 12px;
-  border-radius:16px;
-  display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(150deg, var(--surface-2), var(--card));
-  border:1px solid var(--border-strong);
-  box-shadow:var(--shadow-md);
-  position:relative;
-}
-.logo-mark::before{
-  content:''; position:absolute; inset:-3px; border-radius:19px; z-index:0;
-  background:conic-gradient(from 0deg, var(--primary), var(--accent), var(--success), var(--primary));
-  opacity:.55; filter:blur(1px);
-  animation:aura-spin 7s linear infinite;
-  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-          mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
-}
-.logo-mark::after{
-  content:''; position:absolute; inset:1px; border-radius:15px;
-  background:radial-gradient(circle at 30% 20%, rgba(201,168,78,.35), transparent 60%);
-}
-.logo-mark svg{ width:22px; height:22px; color:var(--primary); position:relative; z-index:1; }
-.logo-mark .rec-dot{
-  position:absolute; top:-3px; right:-3px; width:9px; height:9px; border-radius:50%; z-index:2;
-  background:var(--danger); border:2px solid var(--bg);
-  animation:rec-pulse 2.2s ease-in-out infinite;
-}
 
 .logo-lockup h1{
-  font-family:var(--font-display);
-  font-weight:800;
-  font-size:28px;
+  text-align:center;
+  font-family:'Baloo 2', var(--font-display);
+  font-weight:700;
+  font-size:42px;
+  line-height:1.3;
   letter-spacing:-.02em;
-  background:linear-gradient(100deg, #fff 20%, var(--primary) 55%, var(--accent) 85%);
+}
+.logo-lockup h1 .logo-text{
+  display:inline-block;
+  padding-bottom:.12em;
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
   -webkit-background-clip:text; background-clip:text; color:transparent;
   background-size:220% 100%;
-  animation:shine-text 5s ease-in-out infinite;
+  animation:shine-text 9s linear infinite;
 }
-.logo-lockup h1 .colon{ background:none; -webkit-text-fill-color:initial; color:var(--accent); }
+.logo-lockup h1 .logo-play{
+  display:inline-block;
+  width:9px; height:11px;
+  margin-left:3px;
+  vertical-align:baseline;
+  transform:translateY(-2px);
+  clip-path:polygon(0% 3%, 100% 50%, 0% 97%);
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
+  background-size:220% 100%;
+  animation:shine-text 9s linear infinite;
+  filter:drop-shadow(0 0 4px rgba(90,120,170,.35));
+}
 .logo-lockup .logo-sub{
   margin-top:6px; display:inline-flex; align-items:center; gap:6px;
   font-family:var(--font-display);
@@ -366,8 +358,8 @@ input, select{ font-family:inherit; }
 }
 .logo-lockup .logo-sub .x{ color:var(--primary); font-size:11px; }
 @keyframes shine-text{
-  0%,100%{ background-position:0% 50%; }
-  50%{ background-position:100% 50%; }
+  0%{ background-position:0% 50%; }
+  100%{ background-position:100% 50%; }
 }
 
 .home-tagline{
@@ -501,6 +493,34 @@ body.in-room .grain-overlay{ animation-play-state:paused; }
 .topbar-titles .room-name{
   font-family:var(--font-display); font-weight:800; font-size:13.5px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw;
+}
+.topbar-titles .room-name.topbar-brand{
+  font-family:'Baloo 2', var(--font-display);
+  display:inline-flex; align-items:baseline;
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  background-size:220% 100%;
+  animation:shine-text 9s linear infinite;
+  letter-spacing:-.01em;
+}
+.topbar-brand-sub{
+  font-family:var(--font-body);
+  font-weight:600;
+  color:var(--text-faint);
+  -webkit-background-clip:initial; background-clip:initial;
+  background:none;
+  animation:none;
+  margin-left:2px;
+}
+.logo-play-sm{
+  display:inline-block;
+  width:3.5px; height:4.5px;
+  margin-left:2px;
+  transform:translateY(1px);
+  clip-path:polygon(0% 3%, 100% 50%, 0% 97%);
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
+  background-size:220% 100%;
+  animation:shine-text 9s linear infinite;
 }
 .topbar-titles .room-id{
   font-size:11px; color:var(--text-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw;
@@ -1446,11 +1466,7 @@ select{
 <div id="gate">
   <div class="home-wrap">
     <div class="logo-lockup">
-      <div class="logo-mark">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
-        <span class="rec-dot"></span>
-      </div>
-      <h1>Watch<span class="colon">:</span></h1>
+      <h1><span class="logo-text">Roomly</span><span class="logo-play" aria-hidden="true"></span></h1>
       <div class="logo-sub">burado <span class="x">×</span> otroverr</div>
     </div>
     <p class="home-tagline">Создай комнату или войди в существующую — смотрите видео синхронно и общайтесь в чате в реальном времени.</p>
@@ -1492,11 +1508,8 @@ select{
   <div class="room" id="roomRoot">
     <div class="room-topbar">
       <div class="topbar-left">
-        <div class="topbar-logo">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
-        </div>
         <div class="topbar-titles">
-          <div class="room-name">Watch: burado × otroverr</div>
+          <div class="room-name topbar-brand">Roomly<span class="topbar-brand-sub">: burado × otroverr</span></div>
           <div class="room-id" id="roomBadge">комната</div>
         </div>
       </div>
