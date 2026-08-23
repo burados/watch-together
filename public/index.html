@@ -327,9 +327,9 @@ input, select{ font-family:inherit; }
 .logo-lockup h1 .logo-text{
   display:inline-block;
   padding-bottom:.12em;
-  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 25%, #4F8FBF 50%, #5FA87E 75%, #8579C4 100%);
   -webkit-background-clip:text; background-clip:text; color:transparent;
-  background-size:220% 100%;
+  background-size:200% 100%;
   animation:shine-text 9s linear infinite;
 }
 .logo-lockup h1 .logo-play{
@@ -339,8 +339,8 @@ input, select{ font-family:inherit; }
   vertical-align:baseline;
   transform:translateY(-2px);
   clip-path:polygon(0% 3%, 100% 50%, 0% 97%);
-  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
-  background-size:220% 100%;
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 25%, #4F8FBF 50%, #5FA87E 75%, #8579C4 100%);
+  background-size:200% 100%;
   animation:shine-text 9s linear infinite;
   filter:drop-shadow(0 0 4px rgba(90,120,170,.35));
 }
@@ -358,8 +358,8 @@ input, select{ font-family:inherit; }
 }
 .logo-lockup .logo-sub .x{ color:var(--primary); font-size:11px; }
 @keyframes shine-text{
-  0%{ background-position:0% 50%; }
-  100%{ background-position:100% 50%; }
+  0%{ background-position:200% 50%; }
+  100%{ background-position:0% 50%; }
 }
 
 .home-tagline{
@@ -469,7 +469,40 @@ body.in-room .grain-overlay{ animation-play-state:paused; }
   height:100dvh; height:var(--app-height, 100dvh);
   overflow:hidden;
   background:var(--bg);
+  position:relative;
 }
+
+.room-skeleton{
+  position:absolute; inset:0; z-index:50;
+  display:flex; flex-direction:column;
+  background:var(--bg);
+  padding:12px 14px;
+  transition:opacity .35s var(--ease), visibility .35s var(--ease);
+}
+.room-skeleton.hide{ opacity:0; visibility:hidden; pointer-events:none; }
+.rs-shimmer, .rs-line, .rs-pill, .rs-video, .rs-avatar, .rs-bubble{
+  position:relative; overflow:hidden;
+  background:var(--surface-2);
+  border-radius:8px;
+}
+.rs-shimmer::after, .rs-line::after, .rs-pill::after, .rs-video::after, .rs-avatar::after, .rs-bubble::after{
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(100deg, transparent, rgba(133,121,196,.14), rgba(79,143,191,.14), rgba(95,168,126,.14), rgba(198,168,74,.14), transparent);
+  transform:translateX(-100%);
+  animation:skeleton-shimmer 1.8s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer{ 100%{ transform:translateX(100%); } }
+.rs-topbar{ display:flex; align-items:center; justify-content:space-between; height:32px; margin-bottom:14px; flex-shrink:0; }
+.rs-line-title{ width:150px; height:16px; border-radius:6px; }
+.rs-pill{ width:84px; height:24px; border-radius:99px; }
+.rs-video{ width:100%; flex:1; max-height:230px; border-radius:16px; margin-bottom:16px; flex-shrink:0; }
+.rs-chat{ display:flex; flex-direction:column; gap:12px; }
+.rs-msg{ display:flex; align-items:flex-end; gap:8px; }
+.rs-msg-out{ justify-content:flex-end; }
+.rs-avatar{ width:26px; height:26px; border-radius:50%; flex-shrink:0; }
+.rs-bubble{ width:62%; height:36px; border-radius:14px; }
+.rs-bubble-short{ width:38%; }
+.rs-msg-out .rs-bubble{ width:46%; }
 
 .room-topbar{
   flex-shrink:0;
@@ -497,10 +530,7 @@ body.in-room .grain-overlay{ animation-play-state:paused; }
 .topbar-titles .room-name.topbar-brand{
   font-family:'Baloo 2', var(--font-display);
   display:inline-flex; align-items:baseline;
-  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
-  -webkit-background-clip:text; background-clip:text; color:transparent;
-  background-size:220% 100%;
-  animation:shine-text 9s linear infinite;
+  color:var(--text-secondary);
   letter-spacing:-.01em;
 }
 .topbar-brand-sub{
@@ -518,8 +548,8 @@ body.in-room .grain-overlay{ animation-play-state:paused; }
   margin-left:2px;
   transform:translateY(1px);
   clip-path:polygon(0% 3%, 100% 50%, 0% 97%);
-  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 33%, #4F8FBF 66%, #5FA87E 100%);
-  background-size:220% 100%;
+  background:linear-gradient(100deg, #8579C4 0%, #C6A84A 25%, #4F8FBF 50%, #5FA87E 75%, #8579C4 100%);
+  background-size:200% 100%;
   animation:shine-text 9s linear infinite;
 }
 .topbar-titles .room-id{
@@ -660,6 +690,27 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
   border:1px solid var(--border);
 }
 .no-video .nv-icon svg{ width:26px; height:26px; color:var(--primary); margin-left:2px; }
+.no-video .nv-icon.nv-moon{ background:transparent; border:none; }
+.no-video .nv-icon.nv-moon svg{ width:46px; height:46px; margin-left:0; overflow:visible; }
+.no-video .nv-icon.nv-moon .moon-glow{
+  fill:rgba(124,147,201,.16);
+  animation:candle-glow-pulse 3s ease-in-out infinite;
+}
+.no-video .nv-icon.nv-moon .star{
+  transform-origin:center;
+  animation:star-twinkle 2.4s ease-in-out infinite;
+}
+.no-video .nv-icon.nv-moon .star-1{ animation-delay:0s; }
+.no-video .nv-icon.nv-moon .star-2{ animation-delay:.6s; }
+.no-video .nv-icon.nv-moon .star-3{ animation-delay:1.2s; }
+@keyframes star-twinkle{
+  0%,100%{ opacity:.35; transform:scale(.75); }
+  50%{ opacity:1; transform:scale(1.1); }
+}
+@keyframes candle-glow-pulse{
+  0%,100%{ opacity:.7; }
+  50%{ opacity:1; }
+}
 .no-video p{ font-size:13.5px; line-height:1.55; max-width:280px; color:var(--text-secondary); }
 .no-video .nv-title{ font-family:var(--font-display); font-weight:800; font-size:16px; color:var(--text); }
 
@@ -673,9 +724,10 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 .video-loading.show{ display:flex; }
 .spinner{
   width:46px; height:46px; border-radius:50%;
-  border:3px solid rgba(255,255,255,.15);
-  border-top-color:var(--primary);
-  animation:spin .8s linear infinite;
+  background:conic-gradient(from 0deg, #8579C4, #4F8FBF, #5FA87E, #C6A84A, #8579C4);
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  animation:spin .9s linear infinite;
 }
 .yt-unmute-btn{
   position:absolute; left:50%; bottom:16px; transform:translateX(-50%);
@@ -808,16 +860,22 @@ html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
 .upload-pill{
   display:inline-flex; align-items:center; gap:7px;
   padding:9px 14px;
-  background:var(--surface);
-  border:1px dashed var(--border-strong);
+  background:linear-gradient(135deg, rgba(133,121,196,.14), rgba(79,143,191,.14));
+  border:1px solid rgba(133,121,196,.4);
   border-radius:var(--radius-full);
   color:var(--text-secondary);
   font-size:12.5px; font-weight:600;
   white-space:nowrap;
-  transition:border-color .18s var(--ease), color .18s var(--ease), background .18s var(--ease);
+  transition:border-color .18s var(--ease), color .18s var(--ease), background .18s var(--ease), box-shadow .18s var(--ease), transform .18s var(--ease);
 }
-.upload-pill:hover{ border-color:var(--primary); color:var(--text); background:var(--surface-2); }
-.upload-pill svg{ width:15px; height:15px; }
+.upload-pill:hover{
+  border-color:#8579C4; color:var(--text);
+  background:linear-gradient(135deg, rgba(133,121,196,.22), rgba(79,143,191,.22));
+  box-shadow:0 8px 20px rgba(133,121,196,.25);
+  transform:translateY(-1px);
+}
+.upload-pill svg{ width:15px; height:15px; color:#9B8FD6; }
+.upload-pill:hover svg{ color:#A99BE0; }
 input[type=file]{ display:none; }
 
 .upload-menu{
@@ -980,6 +1038,15 @@ select{
   min-height:100%;
   gap:2px;
 }
+.chat-empty{
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  height:100%; min-height:220px; padding:24px; text-align:center;
+  animation:fade-in .4s var(--ease);
+}
+.chat-empty.hide{ display:none; }
+.chat-empty-icon{ width:30px; height:30px; }
+.chat-empty-title{ font-family:var(--font-display); font-weight:800; font-size:14.5px; color:var(--text-secondary); }
+.chat-empty p{ font-size:12.5px; max-width:220px; line-height:1.5; color:var(--text-faint); margin:0; }
 
 .msg-row{
   display:flex; align-items:flex-end; gap:8px;
@@ -1430,6 +1497,8 @@ select{
   }
   .no-video .nv-icon{ width:80px; height:80px; }
   .no-video .nv-icon svg{ width:32px; height:32px; }
+  .no-video .nv-icon.nv-moon{ width:auto; height:auto; }
+  .no-video .nv-icon.nv-moon svg{ width:58px; height:58px; }
 
   .resize-handle{
     width:16px; flex-shrink:0; cursor:col-resize;
@@ -1506,6 +1575,18 @@ select{
      ============================================================ -->
 <div id="room">
   <div class="room" id="roomRoot">
+    <div class="room-skeleton" id="roomSkeleton">
+      <div class="rs-topbar">
+        <div class="rs-line rs-line-title"></div>
+        <div class="rs-pill"></div>
+      </div>
+      <div class="rs-video"></div>
+      <div class="rs-chat">
+        <div class="rs-msg rs-msg-in"><div class="rs-avatar"></div><div class="rs-bubble"></div></div>
+        <div class="rs-msg rs-msg-out"><div class="rs-bubble"></div></div>
+        <div class="rs-msg rs-msg-in"><div class="rs-avatar"></div><div class="rs-bubble rs-bubble-short"></div></div>
+      </div>
+    </div>
     <div class="room-topbar">
       <div class="topbar-left">
         <div class="topbar-titles">
@@ -1531,11 +1612,24 @@ select{
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="11" y="11" width="8" height="6" rx="1" fill="currentColor"/></svg>
           </button>
           <div class="no-video" id="noVideo">
-            <div class="nv-icon">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M8 5v14l11-7-11-7z" fill="currentColor"/></svg>
+            <div class="nv-icon nv-moon">
+              <svg viewBox="0 0 40 40" aria-hidden="true">
+                <defs>
+                  <linearGradient id="moonGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#A99BDB"/>
+                    <stop offset="55%" stop-color="#7C93C9"/>
+                    <stop offset="100%" stop-color="#5FA87E"/>
+                  </linearGradient>
+                </defs>
+                <ellipse class="moon-glow" cx="20" cy="20" rx="16" ry="16"/>
+                <path d="M25 8a13 13 0 100 24 10.5 10.5 0 010-24z" fill="url(#moonGrad)"/>
+                <g class="star star-1"><path d="M8 10l1.1 2.4L11.5 13.5 8.6 14.6 7.5 17 6.4 14.6 4 13.5 6.4 12.4z" fill="#C6A84A"/></g>
+                <g class="star star-2"><path d="M32 24l.8 1.7 1.7.8-1.7.8-.8 1.7-.8-1.7-1.7-.8 1.7-.8z" fill="#4F8FBF"/></g>
+                <g class="star star-3"><circle cx="30" cy="9" r="1.4" fill="#8579C4"/></g>
+              </svg>
             </div>
             <div class="nv-title">Пока тишина</div>
-            <p>Загрузите видео, выберите из списка ниже — или вставьте ссылку на YouTube (с полной синхронизацией) либо трансляцию с другого сайта</p>
+            <p>Загрузите видео или вставьте ссылку на YouTube</p>
           </div>
           <div class="stream-link-card" id="streamLinkCard" style="display:none;">
             <div class="nv-icon">
@@ -1641,7 +1735,17 @@ select{
       <div class="resize-handle" id="resizeHandle"></div>
 
       <div class="chat-section">
-        <div class="chat-messages" id="chatMessages"><div class="chat-messages-inner" id="chatMessagesInner"></div></div>
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-empty" id="chatEmpty">
+            <svg class="chat-empty-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <defs><linearGradient id="chatEmptyGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8579C4"/><stop offset="50%" stop-color="#4F8FBF"/><stop offset="100%" stop-color="#5FA87E"/></linearGradient></defs>
+              <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" fill="url(#chatEmptyGrad)" opacity=".85"/>
+            </svg>
+            <div class="chat-empty-title">Здесь пока тихо</div>
+            <p>Напишите первое сообщение — начните разговор</p>
+          </div>
+          <div class="chat-messages-inner" id="chatMessagesInner"></div>
+        </div>
         <div class="typing-row" id="typingRow">
           <div class="typing-dots"><span></span><span></span><span></span></div>
           <span id="typingText"></span>
@@ -1678,7 +1782,7 @@ select{
             </button>
           </div>
           <button class="icon-btn" id="chatMoreBtn" onmousedown="event.preventDefault()" onclick="toggleChatMoreMenu()" aria-label="Ещё" style="font-size:18px; font-weight:800; letter-spacing:1px;">⋯</button>
-          <input class="field" type="text" id="chatInput" placeholder="Написать... (Ctrl+V — вставить скриншот)" autocomplete="off" enterkeyhint="send"
+          <input class="field" type="text" id="chatInput" placeholder="Написать..." autocomplete="off" enterkeyhint="send"
                  onkeydown="if(event.key==='Enter') sendChat(); if(event.key==='Escape') document.getElementById('mentionDropdown').classList.remove('show');"
                  oninput="handleTyping()" onblur="setTimeout(() => document.getElementById('mentionDropdown').classList.remove('show'), 150)" />
           <button type="button" class="send-btn ripple-host" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
@@ -2152,6 +2256,11 @@ function enterRoom() {
   updateThemeButtons();
   updateNotifButton();
 
+  setTimeout(() => {
+    const skel = document.getElementById('roomSkeleton');
+    if (skel) skel.classList.add('hide');
+  }, 6000);
+
   socket = io();
   setupSocket();
   loadVideoList();
@@ -2189,6 +2298,8 @@ function setupSocket() {
   let chatHistoryLoaded = false;
 
   socket.on('room-state', (state) => {
+    const skel = document.getElementById('roomSkeleton');
+    if (skel) skel.classList.add('hide');
     if (!chatHistoryLoaded) {
       chatHistoryLoaded = true;
       if (Array.isArray(state.chatHistory) && state.chatHistory.length) {
@@ -3495,8 +3606,10 @@ function hideTyping() {
 function avatarColor(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  const hue = hash % 360;
-  return `hsl(${hue}, 62%, 52%)`;
+  const palette = ['#8579C4', '#4F8FBF', '#5FA87E', '#C6A84A'];
+  const i = hash % palette.length;
+  const j = (i + hash % 3 + 1) % palette.length;
+  return `linear-gradient(135deg, ${palette[i]}, ${palette[j]})`;
 }
 function initials(str) {
   const s = (str || '?').trim();
@@ -3548,6 +3661,8 @@ function scrollChatToBottom(smooth) {
 function addChatMessage(msg, bulkLoad) {
   const box = document.getElementById('chatMessages');
   const inner = document.getElementById('chatMessagesInner');
+  const emptyEl = document.getElementById('chatEmpty');
+  if (emptyEl) emptyEl.classList.add('hide');
   const wasNearBottom = bulkLoad ? true : isNearBottom(box);
 
   if (msg.system) {
@@ -4416,6 +4531,8 @@ function leaveRoom() {
   closeImageLightbox();
 
   document.getElementById('chatMessagesInner').innerHTML = '';
+  const emptyEl = document.getElementById('chatEmpty');
+  if (emptyEl) emptyEl.classList.remove('hide');
   hideTyping();
 
   document.getElementById('room').style.display = 'none';
