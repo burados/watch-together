@@ -3661,8 +3661,10 @@ function scrollChatToBottom(smooth) {
 function addChatMessage(msg, bulkLoad) {
   const box = document.getElementById('chatMessages');
   const inner = document.getElementById('chatMessagesInner');
-  const emptyEl = document.getElementById('chatEmpty');
-  if (emptyEl) emptyEl.classList.add('hide');
+  if (!msg.system) {
+    const emptyEl = document.getElementById('chatEmpty');
+    if (emptyEl) emptyEl.classList.add('hide');
+  }
   const wasNearBottom = bulkLoad ? true : isNearBottom(box);
 
   if (msg.system) {
