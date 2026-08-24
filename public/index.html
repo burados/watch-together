@@ -896,7 +896,6 @@ html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
 }
 .room.theater-mode .video-wrap{ max-height:min(80vh, 720px); }
 .room.theater-mode .chat-section{ min-height:96px; }
-.room.video-empty .stage-toolbar{ display:none; }
 
 .stage-toolbar{
   flex-shrink:0;
@@ -1720,10 +1719,6 @@ select{
             </div>
             <div class="nv-title">Пока тишина</div>
             <p>Загрузите видео или вставьте ссылку на YouTube</p>
-            <button type="button" class="upload-pill ripple-host" onclick="document.getElementById('fileInput').click();">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-              Загрузить видео
-            </button>
           </div>
           <div class="stream-link-card" id="streamLinkCard" style="display:none;">
             <div class="nv-icon">
@@ -2205,20 +2200,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.remove('chat-focused');
     requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
   });
-
-  // Прячем дублирующий "Загрузить" в тулбаре, пока показана пустая
-  // карточка видео (там уже есть своя кнопка загрузки) — и возвращаем
-  // тулбар обратно, как только видео/трансляция загружены.
-  const noVideoEl = document.getElementById('noVideo');
-  const roomRootEl = document.getElementById('roomRoot');
-  if (noVideoEl && roomRootEl) {
-    const syncVideoEmptyState = () => {
-      const isEmpty = noVideoEl.style.display !== 'none';
-      roomRootEl.classList.toggle('video-empty', isEmpty);
-    };
-    syncVideoEmptyState();
-    new MutationObserver(syncVideoEmptyState).observe(noVideoEl, { attributes: true, attributeFilter: ['style'] });
-  }
 });
 
 /* -----------------------------------------------------------
