@@ -161,6 +161,7 @@ input, select{ font-family:inherit; }
 }
 .btn svg{ width:17px; height:17px; flex-shrink:0; }
 .btn:active{ transform:scale(.96); }
+.btn:disabled{ opacity:.4; pointer-events:none; box-shadow:none; transform:none; }
 .btn-lg{ padding:14px 20px; font-size:15px; border-radius:var(--radius-md); }
 .btn-block{ width:100%; }
 
@@ -286,6 +287,7 @@ input, select{ font-family:inherit; }
   display:flex;
   flex-direction:column;
   align-items:center;
+  justify-content:center;
 }
 .bg-glow{
   position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
@@ -401,6 +403,51 @@ input, select{ font-family:inherit; }
 }
 .home-card .field{ padding:12px 16px 12px 42px; background:var(--surface); }
 .home-card .field-group{ margin-bottom:12px; }
+
+.gate-divider{
+  display:flex; align-items:center; gap:10px;
+  margin:16px 0; color:var(--text-faint); font-size:11.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.03em;
+}
+.gate-divider::before, .gate-divider::after{
+  content:''; flex:1; height:1px; background:var(--border);
+}
+.gate-link-btn{
+  display:flex; align-items:center; justify-content:center; gap:5px;
+  width:100%; margin-top:10px;
+  background:none; border:none; padding:6px 0 0;
+  color:var(--primary); font-size:13px; font-weight:700;
+  text-align:center; cursor:pointer;
+  transition:opacity .15s var(--ease);
+}
+.gate-link-btn svg{ width:13px; height:13px; flex-shrink:0; transition:transform .2s var(--ease); }
+.gate-link-btn:hover{ opacity:.8; }
+.gate-link-btn.open svg{ transform:rotate(180deg); }
+
+.create-btn-group{
+  display:flex; align-items:stretch;
+  border-radius:var(--radius-md); overflow:hidden;
+  background:var(--primary);
+  box-shadow:0 10px 26px rgba(201,168,78,.28);
+}
+.create-btn-group .create-btn-main{
+  flex:1; border-radius:0; box-shadow:none;
+  background:none;
+}
+.create-btn-more{
+  display:flex; align-items:center; justify-content:center;
+  width:46px; flex-shrink:0; padding:0;
+  background:none;
+  color:var(--primary-ink);
+  border:none; border-left:1px solid rgba(0,0,0,.22);
+  cursor:pointer;
+  transition:filter .15s var(--ease);
+}
+.create-btn-more svg{ width:18px; height:18px; }
+.create-btn-more svg circle{ fill:currentColor; }
+.create-btn-more:active{ filter:brightness(.9); }
+.create-btn-more.open{ filter:brightness(.88); }
+.custom-code-field{ margin-top:12px; margin-bottom:0; animation:fade-in .25s var(--ease); }
 
 .cta-row{ display:flex; gap:10px; margin-top:4px; }
 .cta-row .btn{ flex:1; }
@@ -747,10 +794,11 @@ video{ width:100%; height:100%; object-fit:contain; background:#000; }
 .msg-row{ position:relative; }
 .msg-react-btn{
   flex-shrink:0; width:22px; height:22px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
+  display:inline-flex; align-items:center; justify-content:center;
+  vertical-align:middle; margin-left:2px;
   background:transparent; color:var(--text-faint);
   opacity:.5; transition:opacity .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
-  cursor:pointer; margin-left:auto;
+  cursor:pointer;
 }
 .msg-row:hover .msg-react-btn,
 .msg-react-btn.force-show{ opacity:1; }
@@ -848,6 +896,7 @@ html[data-theme="light"] .msg-react-picker{ background:rgba(255,255,255,.95); }
 }
 .room.theater-mode .video-wrap{ max-height:min(80vh, 720px); }
 .room.theater-mode .chat-section{ min-height:96px; }
+.room.video-empty .stage-toolbar{ display:none; }
 
 .stage-toolbar{
   flex-shrink:0;
@@ -1003,7 +1052,7 @@ select{
   background:var(--primary-soft); border-radius:4px; padding:0 3px;
 }
 .msg-row.mentioned .msg-body{
-  box-shadow:0 0 0 2px var(--primary);
+  box-shadow:0 1px 2px rgba(0,0,0,.14), 0 6px 16px rgba(0,0,0,.08);
 }
 .mention-dropdown{
   position:absolute; left:14px; right:14px; bottom:100%;
@@ -1038,9 +1087,10 @@ select{
   min-height:100%;
   gap:2px;
 }
+#chatEmpty:not(.hide) ~ .chat-messages-inner{ min-height:0; }
 .chat-empty{
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
-  height:100%; min-height:220px; padding:24px; text-align:center;
+  display:flex; flex-direction:column; align-items:center; gap:8px;
+  padding:32px 24px 20px; text-align:center;
   animation:fade-in .4s var(--ease);
 }
 .chat-empty.hide{ display:none; }
@@ -1096,18 +1146,22 @@ select{
   margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .msg-row.own .msg-name{ color:var(--primary); opacity:1; }
-.msg-line{ display:flex; align-items:baseline; gap:8px; }
-.msg-text{ flex:1; min-width:0; font-size:13.5px; line-height:1.45; color:var(--text); word-break:break-word; white-space:pre-wrap; }
+.msg-line{ display:block; }
+.msg-text{ display:inline; font-size:13.5px; line-height:1.6; color:var(--text); word-break:break-word; white-space:pre-wrap; }
 .msg-text-emoji-only{
   font-size:40px !important; line-height:1.15 !important;
   animation:emoji-msg-pop .45s var(--ease-spring);
 }
+.msg-body:has(.msg-text-emoji-only){
+  background:none; border:none; box-shadow:none; padding:2px 4px 0;
+}
+.msg-body:has(.msg-text-emoji-only) .msg-time{ vertical-align:bottom; margin-bottom:2px; }
 @keyframes emoji-msg-pop{
   0%{ transform:scale(.3); opacity:0; }
   60%{ transform:scale(1.18); opacity:1; }
   100%{ transform:scale(1); opacity:1; }
 }
-.msg-time{ flex-shrink:0; font-size:10.5px; color:var(--text-faint); white-space:nowrap; }
+.msg-time{ display:inline-block; margin-left:6px; font-size:10.5px; color:var(--text-faint); white-space:nowrap; }
 
 /* Двойной тап / реакция — эмодзи вылетает и растворяется */
 .msg-heart-burst{
@@ -1250,6 +1304,7 @@ select{
 
 .chat-input{
   position:relative;
+  z-index:21;
   flex-shrink:0; display:flex; align-items:center; gap:8px;
   padding:10px 12px calc(10px + env(safe-area-inset-bottom));
   background:var(--card);
@@ -1260,6 +1315,8 @@ select{
   background:var(--surface);
 }
 .chat-input .icon-btn{ background:var(--surface); }
+#chatMoreBtn svg{ width:19px; height:19px; }
+#chatMoreBtn.active{ background:var(--primary-soft); color:var(--primary); }
 #micBtn.recording{ background:var(--danger, #e05252); color:#fff; }
 
 .chat-more-menu{
@@ -1339,6 +1396,16 @@ select{
 .send-btn:active{ transform:scale(.88); }
 .send-btn svg{ width:18px; height:18px; }
 
+.send-mic-slot{ position:relative; width:44px; height:44px; flex-shrink:0; }
+.send-mic-slot .send-btn{
+  position:absolute; inset:0; margin:0;
+  transition:opacity .16s var(--ease), transform .22s var(--ease-spring);
+}
+.send-mic-slot #micBtn{ opacity:1; transform:scale(1) rotate(0deg); }
+.send-mic-slot #sendBtn{ opacity:0; transform:scale(.4) rotate(-40deg); pointer-events:none; }
+.send-mic-slot.has-content #micBtn{ opacity:0; transform:scale(.4) rotate(40deg); pointer-events:none; }
+.send-mic-slot.has-content #sendBtn{ opacity:1; transform:scale(1) rotate(0deg); pointer-events:auto; }
+
 /* =============================================================
    5. Bottom nav (mobile)
    ============================================================= */
@@ -1346,7 +1413,7 @@ select{
   flex-shrink:0;
   display:flex; align-items:center; justify-content:space-around;
   margin:0 10px calc(10px + env(safe-area-inset-bottom));
-  padding:8px;
+  padding:10px 6px;
   background:rgba(29,29,37,.9);
   backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border:1px solid var(--border);
@@ -1354,16 +1421,27 @@ select{
   box-shadow:var(--shadow-md);
 }
 .nav-item{
-  display:flex; flex-direction:column; align-items:center; gap:3px;
-  padding:7px 12px; border-radius:var(--radius-full);
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:0; border-radius:var(--radius-full);
   color:var(--text-faint);
-  transition:color .18s var(--ease), background .18s var(--ease);
+  transition:color .18s var(--ease);
   flex:1;
 }
+.nav-item .nav-ico{
+  width:34px; height:34px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%;
+  transition:background .25s var(--ease), box-shadow .25s var(--ease);
+}
 .nav-item svg{ width:19px; height:19px; }
-.nav-item span{ font-size:9.5px; font-weight:700; letter-spacing:.02em; }
+.nav-item .nav-label{ font-size:9.5px; font-weight:700; letter-spacing:.02em; transition:opacity .18s var(--ease), color .18s var(--ease); }
 .nav-item:active{ transform:scale(.92); }
-.nav-item.active{ color:var(--primary); background:var(--primary-soft); }
+.nav-item.active{ color:var(--primary); }
+.nav-item.active .nav-ico{
+  background:var(--primary-soft);
+  box-shadow:0 0 16px rgba(201,168,78,.55), 0 0 4px rgba(201,168,78,.5);
+}
+.nav-item.active .nav-ico svg{ stroke:var(--primary); filter:drop-shadow(0 0 3px rgba(201,168,78,.7)); }
 .more-menu-item{ justify-content:flex-start; margin-top:8px; }
 .more-menu-item svg{ width:18px; height:18px; flex-shrink:0; }
 
@@ -1538,7 +1616,7 @@ select{
       <h1><span class="logo-text">Roomly</span><span class="logo-play" aria-hidden="true"></span></h1>
       <div class="logo-sub">burado <span class="x">×</span> otroverr</div>
     </div>
-    <p class="home-tagline">Создай комнату или войди в существующую — смотрите видео синхронно и общайтесь в чате в реальном времени.</p>
+    <p class="home-tagline">Смотрите видео вместе, в реальном времени.</p>
 
     <div class="home-card-halo">
     <div class="home-card">
@@ -1549,17 +1627,29 @@ select{
           <input class="field" type="text" id="nameInput" placeholder="Например, Влад" maxlength="20" />
         </div>
       </div>
+      <div class="create-btn-group">
+        <button class="btn btn-primary btn-lg create-btn-main ripple-host" onclick="createRoom(event)">Создать комнату</button>
+        <button type="button" class="create-btn-more" id="customCodeToggle" onclick="toggleCustomCode()" aria-label="Свой код комнаты">
+          <svg viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+        </button>
+      </div>
+      <div class="field-group custom-code-field" id="customCodeField" style="display:none;">
+        <div class="field-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>
+          <input class="field" type="text" id="customRoomInput" placeholder="movie-night" maxlength="30" />
+        </div>
+      </div>
+
+      <div class="gate-divider"><span>или войти по коду</span></div>
+
       <div class="field-group">
         <label class="field-label" for="roomInput">Код комнаты</label>
         <div class="field-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/></svg>
-          <input class="field" type="text" id="roomInput" placeholder="friday-night" maxlength="30" />
+          <input class="field" type="text" id="roomInput" placeholder="friday-night" maxlength="30" oninput="updateGateJoinState()" />
         </div>
       </div>
-      <div class="cta-row">
-        <button class="btn btn-primary btn-lg ripple-host" onclick="createRoom(event)">Создать комнату</button>
-        <button class="btn btn-ghost btn-lg ripple-host" onclick="joinRoom(event)">Войти в комнату</button>
-      </div>
+      <button class="btn btn-ghost btn-lg btn-block ripple-host" id="joinRoomBtn" onclick="joinRoom(event)" disabled>Войти в комнату</button>
     </div>
     </div>
 
@@ -1630,6 +1720,10 @@ select{
             </div>
             <div class="nv-title">Пока тишина</div>
             <p>Загрузите видео или вставьте ссылку на YouTube</p>
+            <button type="button" class="upload-pill ripple-host" onclick="document.getElementById('fileInput').click();" style="margin-top:14px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+              Загрузить видео
+            </button>
           </div>
           <div class="stream-link-card" id="streamLinkCard" style="display:none;">
             <div class="nv-icon">
@@ -1777,17 +1871,22 @@ select{
             <button class="icon-btn" id="emojiBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); openEmojiPicker()" aria-label="Эмодзи">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
             </button>
-            <button class="icon-btn" id="micBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); startVoiceRecording()" aria-label="Голосовое сообщение">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
-            </button>
           </div>
-          <button class="icon-btn" id="chatMoreBtn" onmousedown="event.preventDefault()" onclick="toggleChatMoreMenu()" aria-label="Ещё" style="font-size:18px; font-weight:800; letter-spacing:1px;">⋯</button>
+          <button class="icon-btn" id="chatMoreBtn" onmousedown="event.preventDefault()" onclick="toggleChatMoreMenu()" aria-label="Ещё">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="chatMoreIconDots"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="chatMoreIconClose" style="display:none;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
           <input class="field" type="text" id="chatInput" placeholder="Написать..." autocomplete="off" enterkeyhint="send"
                  onkeydown="if(event.key==='Enter') sendChat(); if(event.key==='Escape') document.getElementById('mentionDropdown').classList.remove('show');"
-                 oninput="handleTyping()" onblur="setTimeout(() => document.getElementById('mentionDropdown').classList.remove('show'), 150)" />
-          <button type="button" class="send-btn ripple-host" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </button>
+                 oninput="handleTyping(); updateSendMicUI();" onblur="setTimeout(() => document.getElementById('mentionDropdown').classList.remove('show'), 150)" />
+          <div class="send-mic-slot" id="sendMicSlot">
+            <button type="button" class="send-btn ripple-host" id="micBtn" onmousedown="event.preventDefault()" onclick="closeChatMoreMenu(); startVoiceRecording()" aria-label="Голосовое сообщение">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></svg>
+            </button>
+            <button type="button" class="send-btn ripple-host" id="sendBtn" onmousedown="event.preventDefault()" onclick="sendChat()" aria-label="Отправить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </button>
+          </div>
         </div>
         <div class="voice-record-bar" id="voiceRecordBar">
           <button type="button" class="voice-cancel-btn" onclick="cancelVoiceRecording()" aria-label="Отменить запись">✕</button>
@@ -1803,24 +1902,16 @@ select{
 
     <div class="bottom-nav">
       <button class="nav-item active" id="navHome" onclick="setNav('home')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
-        <span>Экран</span>
-      </button>
-      <button class="nav-item" id="navUpload" onclick="setNav('upload')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-        <span>Загрузить</span>
-      </button>
-      <button class="nav-item" id="navChat" onclick="setNav('chat')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
-        <span>Чат</span>
+        <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span>
+        <span class="nav-label">Экран</span>
       </button>
       <button class="nav-item" id="navSettings" onclick="setNav('settings')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-        <span>Настройки</span>
+        <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
+        <span class="nav-label">Настройки</span>
       </button>
       <button class="nav-item" id="navProfile" onclick="setNav('profile')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Профиль</span>
+        <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+        <span class="nav-label">Профиль</span>
       </button>
     </div>
   </div>
@@ -1856,7 +1947,8 @@ select{
     <div class="settings-row">
       <span class="label">Уведомления о сообщениях</span>
       <button class="icon-btn ripple-host" id="notifToggleBtn" onclick="toggleNotifications()" aria-label="Уведомления">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="notifIconOn"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="notifIconOff" style="display:none;"><path d="M8.7 3.7A6 6 0 0118 8c0 3.3.8 5.5 1.5 6.9M6.3 6.3C5.2 8 5 10.1 5 12c0 5-3 5-3 5"/><path d="M13.73 21a2 2 0 01-3.46 0"/><path d="M2 2l20 20"/></svg>
       </button>
     </div>
     <button class="btn btn-ghost btn-block ripple-host" style="margin-top:8px;" onclick="shareRoom()">Поделиться комнатой</button>
@@ -2104,6 +2196,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const chatInput = document.getElementById('chatInput');
   if (!chatInput) return;
+  updateSendMicUI();
   chatInput.addEventListener('focus', () => {
     document.body.classList.add('chat-focused');
     requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
@@ -2112,6 +2205,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.remove('chat-focused');
     requestAnimationFrame(() => sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight));
   });
+
+  // Прячем дублирующий "Загрузить" в тулбаре, пока показана пустая
+  // карточка видео (там уже есть своя кнопка загрузки) — и возвращаем
+  // тулбар обратно, как только видео/трансляция загружены.
+  const noVideoEl = document.getElementById('noVideo');
+  const roomRootEl = document.getElementById('roomRoot');
+  if (noVideoEl && roomRootEl) {
+    const syncVideoEmptyState = () => {
+      const isEmpty = noVideoEl.style.display !== 'none';
+      roomRootEl.classList.toggle('video-empty', isEmpty);
+    };
+    syncVideoEmptyState();
+    new MutationObserver(syncVideoEmptyState).observe(noVideoEl, { attributes: true, attributeFilter: ['style'] });
+  }
 });
 
 /* -----------------------------------------------------------
@@ -2210,7 +2317,14 @@ renderRecentRooms();
     const r = params.get('room');
     if (r) document.getElementById('roomInput').value = r;
   } catch (e) {}
+  updateGateJoinState();
 })();
+
+function updateGateJoinState() {
+  const btn = document.getElementById('joinRoomBtn');
+  if (!btn) return;
+  btn.disabled = !document.getElementById('roomInput').value.trim();
+}
 
 /* -----------------------------------------------------------
    Home actions
@@ -2225,8 +2339,23 @@ function generateRoomCode() {
 function createRoom(e) {
   if (e) e.preventDefault();
   const roomField = document.getElementById('roomInput');
-  if (!roomField.value.trim()) roomField.value = generateRoomCode();
+  const customField = document.getElementById('customRoomInput');
+  const custom = customField ? customField.value.trim() : '';
+  if (custom) {
+    roomField.value = custom;
+  } else if (!roomField.value.trim()) {
+    roomField.value = generateRoomCode();
+  }
   enterRoom();
+}
+function toggleCustomCode() {
+  const field = document.getElementById('customCodeField');
+  const btn = document.getElementById('customCodeToggle');
+  const opening = field.style.display === 'none';
+  field.style.display = opening ? 'block' : 'none';
+  btn.classList.toggle('open', opening);
+  if (opening) document.getElementById('customRoomInput').focus();
+  else document.getElementById('customRoomInput').value = '';
 }
 function joinRoom(e) {
   if (e) e.preventDefault();
@@ -3416,12 +3545,14 @@ function setPendingChatImage(file) {
   document.getElementById('chatAttachCaption').textContent = file.name || 'Картинка готова к отправке';
   document.getElementById('chatAttachPreview').classList.add('show');
   document.getElementById('chatInput').focus();
+  updateSendMicUI();
 }
 
 function clearChatAttachment() {
   pendingChatImage = null;
   document.getElementById('chatAttachPreview').classList.remove('show');
   document.getElementById('chatAttachThumb').src = '';
+  updateSendMicUI();
 }
 
 function uploadChatImage(file) {
@@ -3475,6 +3606,7 @@ function sendChat() {
     stopTypingEmit();
     clearReply();
     document.getElementById('mentionDropdown').classList.remove('show');
+    updateSendMicUI();
     requestAnimationFrame(() => input.focus());
     return;
   }
@@ -3484,6 +3616,7 @@ function sendChat() {
   caption.textContent = 'Отправка...';
   input.value = '';
   stopTypingEmit();
+  updateSendMicUI();
 
   uploadChatImage(imageFile)
     .then((filename) => {
@@ -3499,7 +3632,17 @@ function sendChat() {
     });
 }
 
+function updateSendMicUI() {
+  const input = document.getElementById('chatInput');
+  const slot = document.getElementById('sendMicSlot');
+  if (!input || !slot) return;
+  const hasContent = input.value.trim().length > 0 || !!pendingChatImage;
+  slot.classList.toggle('has-content', hasContent);
+}
+
 function handleTyping() {
+  const menu = document.getElementById('chatMoreMenu');
+  if (menu && menu.classList.contains('show')) closeChatMoreMenu();
   if (!socket) return;
   const now = Date.now();
   if (now - lastTypingEmit > 1500) {
@@ -3661,10 +3804,8 @@ function scrollChatToBottom(smooth) {
 function addChatMessage(msg, bulkLoad) {
   const box = document.getElementById('chatMessages');
   const inner = document.getElementById('chatMessagesInner');
-  if (!msg.system) {
-    const emptyEl = document.getElementById('chatEmpty');
-    if (emptyEl) emptyEl.classList.add('hide');
-  }
+  const emptyEl = document.getElementById('chatEmpty');
+  if (emptyEl) emptyEl.classList.add('hide');
   const wasNearBottom = bulkLoad ? true : isNearBottom(box);
 
   if (msg.system) {
@@ -4162,7 +4303,6 @@ function renderTttState(state) {
    ----------------------------------------------------------- */
 function setNav(which) {
   const roomRoot = document.getElementById('roomRoot');
-  if (which === 'upload') { document.getElementById('fileInput').click(); return; }
   if (which === 'settings') { openSettings(); return; }
   if (which === 'profile') { openProfileEditor(); return; }
 
@@ -4171,11 +4311,6 @@ function setNav(which) {
     document.getElementById('navHome').classList.add('active');
     roomRoot.classList.toggle('theater-mode');
     sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  } else if (which === 'chat') {
-    document.getElementById('navChat').classList.add('active');
-    roomRoot.classList.remove('theater-mode');
-    document.getElementById('chatInput').focus();
-    scrollChatToBottom(true);
   }
 }
 
@@ -4185,10 +4320,21 @@ function toggleChatMoreMenu() {
   const show = !menu.classList.contains('show');
   menu.classList.toggle('show', show);
   backdrop.classList.toggle('show', show);
+  setChatMoreBtnState(show);
 }
 function closeChatMoreMenu() {
   document.getElementById('chatMoreMenu').classList.remove('show');
   document.getElementById('chatMoreMenuBackdrop').classList.remove('show');
+  setChatMoreBtnState(false);
+}
+function setChatMoreBtnState(open) {
+  const btn = document.getElementById('chatMoreBtn');
+  const dots = document.getElementById('chatMoreIconDots');
+  const close = document.getElementById('chatMoreIconClose');
+  if (!btn || !dots || !close) return;
+  btn.classList.toggle('active', open);
+  dots.style.display = open ? 'none' : '';
+  close.style.display = open ? '' : 'none';
 }
 
 function openSettings() {
@@ -4372,9 +4518,15 @@ async function unsubscribeFromPush() {
 
 function updateNotifButton() {
   const btn = document.getElementById('notifToggleBtn');
+  const iconOn = document.getElementById('notifIconOn');
+  const iconOff = document.getElementById('notifIconOff');
   if (!btn) return;
   btn.style.color = notificationsEnabled ? 'var(--primary)' : '';
   btn.style.borderColor = notificationsEnabled ? 'var(--primary)' : '';
+  if (iconOn && iconOff) {
+    iconOn.style.display = notificationsEnabled ? '' : 'none';
+    iconOff.style.display = notificationsEnabled ? 'none' : '';
+  }
 }
 function playPingSound() {
   try {
