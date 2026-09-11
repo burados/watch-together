@@ -6,6 +6,10 @@ const multer = require('multer');
 const { Server } = require('socket.io');
 const { randomUUID } = require('crypto');
 const webPush = require('web-push');
+const mediaStorage = require('./server/storage');
+const { extractMetadataFromFilename, lookupTmdb } = require('./server/metadata');
+const { probeVideo, generateThumbnail } = require('./server/thumbnails');
+const { addTimelineEvent } = require('./server/timeline');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +34,10 @@ if (!fs.existsSync(AVATAR_DIR)) {
 }
 if (!fs.existsSync(VOICE_DIR)) {
   fs.mkdirSync(VOICE_DIR, { recursive: true });
+}
+const THUMB_DIR = path.join(UPLOAD_DIR, 'thumbnails');
+if (!fs.existsSync(THUMB_DIR)) {
+  fs.mkdirSync(THUMB_DIR, { recursive: true });
 }
 
 // --- Настройка загрузки файлов ---
@@ -100,6 +108,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
 app.use('/avatars', express.static(AVATAR_DIR));
 app.use('/voice-messages', express.static(VOICE_DIR));
+app.use('/thumbnails', express.static(THUMB_DIR));
 
 // --- Push-уведомления (Web Push), чтобы сообщения приходили даже с закрытым приложением ---
 // Ключи VAPID генерируются один раз и сохраняются рядом на диске — вручную
@@ -327,16 +336,136 @@ function isValidVoiceFile(filename) {
   return fs.existsSync(path.join(VOICE_DIR, filename));
 }
 
+// --- Метаданные загруженных видео ---
+// filename -> нормализованная media-запись (см. описание модели в README).
+// Хранится в памяти процесса (как и всё остальное состояние в этом
+// проекте) — при перезапуске сервера метаданные просто перевычислятся
+// заново при следующем обращении к видео.
+const mediaRecords = {};
+
+function buildBaseMediaRecord(file, probe) {
+  const guess = extractMetadataFromFilename(file.originalname);
+  return {
+    id: file.filename,
+    filename: file.filename,
+    originalName: file.originalname,
+    title: guess.title,
+    year: guess.year,
+    posterUrl: null,
+    backdropUrl: null,
+    overview: '',
+    genres: [],
+    rating: null,
+    duration: probe ? probe.duration : null,
+    width: probe ? probe.width : null,
+    height: probe ? probe.height : null,
+    size: file.size,
+    mimeType: file.mimetype,
+    storageProvider: mediaStorage.provider(),
+    uploadedAt: Date.now(),
+    metadataSource: 'filename',
+    thumbnailUrl: null
+  };
+}
+
+// Отправляет обновлённую media-запись всем комнатам, которые прямо сейчас
+// показывают это видео — так карточка с постером/рейтингом "дозагружается"
+// без перезагрузки страницы, как только приходит ответ TMDB/готово превью.
+function notifyMediaUpdated(filename) {
+  const record = mediaRecords[filename];
+  if (!record) return;
+  Object.keys(rooms).forEach((room) => {
+    if (rooms[room].video === filename) {
+      rooms[room].media = record;
+      io.to(room).emit('media-updated', record);
+    }
+  });
+}
+
+// Дообогащает уже отданную клиенту базовую запись: превью кадра (FFmpeg) и
+// поиск на TMDB — оба шага необязательны и никогда не должны ронять сервер
+// или мешать уже идущей загрузке/просмотру.
+async function enrichMediaRecordInBackground(file, guess) {
+  const filename = file.filename;
+  try {
+    const thumbPath = path.join(THUMB_DIR, filename.replace(/\.[^.]+$/, '') + '.jpg');
+    const thumbResult = await generateThumbnail(path.join(UPLOAD_DIR, filename), thumbPath, mediaRecords[filename]?.duration);
+    if (thumbResult && mediaRecords[filename]) {
+      mediaRecords[filename].thumbnailUrl = '/thumbnails/' + path.basename(thumbResult);
+      notifyMediaUpdated(filename);
+    }
+  } catch (e) {
+    console.warn('[thumbnails] Не удалось сгенерировать превью для', filename, e.message);
+  }
+
+  try {
+    const tmdb = await lookupTmdb(guess.searchTitle, guess.year, guess.kind);
+    if (tmdb && mediaRecords[filename]) {
+      Object.assign(mediaRecords[filename], {
+        title: tmdb.title || mediaRecords[filename].title,
+        year: tmdb.year || mediaRecords[filename].year,
+        posterUrl: tmdb.posterUrl,
+        backdropUrl: tmdb.backdropUrl,
+        overview: tmdb.overview,
+        rating: tmdb.rating,
+        metadataSource: 'tmdb'
+      });
+      notifyMediaUpdated(filename);
+    }
+  } catch (e) {
+    console.warn('[metadata] Обогащение через TMDB не удалось для', filename, e.message);
+  }
+
+  // Загрузка в облако (если включено) — тоже фоном, чтобы не задерживать ответ /upload
+  try {
+    const result = await mediaStorage.uploadFileFromPath(path.join(UPLOAD_DIR, filename), filename, file.mimetype);
+    if (mediaRecords[filename] && result && result.provider) {
+      mediaRecords[filename].storageProvider = result.provider;
+    }
+  } catch (e) {
+    console.warn('[storage] Фоновая загрузка в облако не удалась для', filename, e.message);
+  }
+}
+
 // Загрузка видео
 app.post('/upload', (req, res) => {
-  upload.single('video')(req, res, (err) => {
+  upload.single('video')(req, res, async (err) => {
     if (err) {
       console.error('Ошибка загрузки:', err.message);
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'Файл не получен' });
-    res.json({ filename: req.file.filename });
+
+    // Технический пробинг (длительность/разрешение) — необязателен, делаем
+    // его сразу, но не даём ему задержать ответ дольше пары секунд: он
+    // быстрый локально (ffprobe читает только заголовок контейнера).
+    let probe = null;
+    try {
+      probe = await probeVideo(path.join(UPLOAD_DIR, req.file.filename));
+    } catch (e) {
+      probe = null;
+    }
+
+    const guess = extractMetadataFromFilename(req.file.originalname);
+    const record = buildBaseMediaRecord(req.file, probe);
+    mediaRecords[req.file.filename] = record;
+
+    // Отвечаем клиенту сразу с тем, что уже знаем — метаданные из имени
+    // файла плюс техническая информация. Постер/рейтинг/превью подтянутся
+    // позже фоном и придут через 'media-updated', ничего не блокируя.
+    res.json({ filename: req.file.filename, media: record });
+
+    enrichMediaRecordInBackground(req.file, guess).catch((e) => {
+      console.error('[media] Фоновое обогащение метаданных упало:', e.message);
+    });
   });
+});
+
+// Текущая (возможно ещё не полностью обогащённая) media-запись по имени файла
+app.get('/api/media/:filename', (req, res) => {
+  const record = mediaRecords[req.params.filename];
+  if (!record) return res.status(404).json({ error: 'no-record' });
+  res.json(record);
 });
 
 // Загрузка картинки в чат (скрин из буфера обмена или фото с устройства)
@@ -377,44 +506,63 @@ app.post('/upload-voice', (req, res) => {
 
 // Список загруженных файлов
 app.get('/videos', (req, res) => {
-  const files = fs.readdirSync(UPLOAD_DIR).filter(f => !f.startsWith('.'));
+  // ВАЖНО: UPLOAD_DIR теперь также содержит подпапку thumbnails/ (см. THUMB_DIR
+  // выше) — без фильтрации по isFile() она бы попадала в список видео как
+  // обычный файл, и попытка "воспроизвести" папку ломала бы плеер.
+  const files = fs.readdirSync(UPLOAD_DIR).filter((f) => {
+    if (f.startsWith('.')) return false;
+    return fs.statSync(path.join(UPLOAD_DIR, f)).isFile();
+  });
   res.json(files);
 });
 
-// Стриминг видео с поддержкой Range-запросов (перемотка)
-app.get('/video/:filename', (req, res) => {
-  const filePath = path.join(UPLOAD_DIR, req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).send('Файл не найден');
-
-  const stat = fs.statSync(filePath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-    const chunkSize = end - start + 1;
-    const file = fs.createReadStream(filePath, { start, end });
-
-    res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunkSize,
-      'Content-Type': 'video/mp4'
+// Стриминг видео с поддержкой Range-запросов (перемотка). Идёт через
+// абстракцию storage.js — сама она не знает и не должна знать, лежит файл
+// локально или в R2 (см. server/storage.js), тут только HTTP-обвязка.
+app.get('/video/:filename', async (req, res) => {
+  try {
+    const result = await mediaStorage.getRangeStream(req.params.filename, req.headers.range, mediaRecords[req.params.filename]?.mimeType);
+    if (!result) return res.status(404).send('Файл не найден');
+    res.writeHead(result.statusCode, result.headers);
+    result.stream.pipe(res);
+    result.stream.on('error', (err) => {
+      console.error('Ошибка стриминга видео:', err.message);
+      if (!res.headersSent) res.status(500).end();
+      else res.end();
     });
-    file.pipe(res);
-  } else {
-    res.writeHead(200, {
-      'Content-Length': fileSize,
-      'Content-Type': 'video/mp4'
-    });
-    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    console.error('Ошибка стриминга видео:', err.message);
+    if (!res.headersSent) res.status(500).send('Ошибка сервера');
   }
 });
 
 // --- Комнаты и синхронизация ---
-const rooms = {}; // roomId -> { video, currentTime, playing, reactions, cleanupTimer }
+const rooms = {}; // roomId -> { video, currentTime, playing, reactions, cleanupTimer, ... }
+
+// Единая фабрика начального состояния комнаты — раньше этот литерал был
+// продублирован в двух местах и рисковал разойтись при добавлении новых
+// полей (что и произошло при добавлении media/timeline/presence).
+function createRoomState() {
+  return {
+    video: null,
+    currentTime: 0,
+    playing: false,
+    playbackUpdatedAt: Date.now(), // когда currentTime/playing последний раз менялись — нужно клиенту для расчёта дрейфа синхронизации
+    stateVersion: 0, // растёт при каждом play/pause/seek — защищает от применения устаревших событий не по порядку
+    reactions: {},
+    streamLink: null,
+    externalVideo: null,
+    youtubeVideo: null,
+    media: null, // текущая media-запись выбранного видео (см. mediaRecords)
+    aiHistory: [],
+    ttt: null,
+    members: new Map(),
+    chatHistory: [],
+    timeline: [],
+    pinnedMessage: null,
+    createdAt: Date.now()
+  };
+}
 
 // Через сколько минут после того, как комната опустела, удалять её из памяти
 const ROOM_EMPTY_TTL_MS = (parseInt(process.env.ROOM_EMPTY_TTL_MINUTES, 10) || 15) * 60 * 1000;
@@ -467,6 +615,11 @@ function cleanupOldFiles() {
             if (err) console.error(`Не удалось удалить старый файл ${file}:`, err.message);
             else console.log(`Автоочистка: удалён старый файл ${file}`);
           });
+          // Вместе с видео чистим его превью (иначе картинки в uploads/thumbnails/
+          // копятся вечно — readdir выше не заходит в подпапки) и запись метаданных.
+          const thumbPath = path.join(THUMB_DIR, file.replace(/\.[^.]+$/, '') + '.jpg');
+          fs.unlink(thumbPath, () => {}); // файла может и не быть (ffmpeg недоступен/ещё не сгенерировался) — это не ошибка
+          delete mediaRecords[file];
         }
       });
     });
@@ -600,6 +753,31 @@ function broadcastRoomUsers(room) {
   io.to(room).emit('room-users', { names: getRoomNames(room) });
 }
 
+// --- Presence (кто в комнате и что сейчас делает) ---
+// Изменения статуса (play/pause/chat/reconnect) могут приходить пачками —
+// например когда несколько участников почти одновременно жмут паузу.
+// Коалесцируем такие всплески в одну рассылку раз в ~400мс на комнату,
+// вместо события на каждое отдельное изменение.
+const presenceFlushTimers = {};
+function schedulePresenceBroadcast(room) {
+  if (presenceFlushTimers[room]) return;
+  presenceFlushTimers[room] = setTimeout(() => {
+    delete presenceFlushTimers[room];
+    const members = rooms[room]?.members;
+    if (!members) return;
+    const list = Array.from(members.values())
+      .map((m) => ({
+        clientId: m.clientId,
+        name: m.name,
+        avatar: m.avatar,
+        avatarPhoto: m.avatarPhoto ? ('/avatars/' + m.avatarPhoto) : '',
+        status: m.status || 'watching',
+        lastActivity: m.lastActivity || Date.now()
+      }));
+    io.to(room).emit('presence-update', list);
+  }, 400);
+}
+
 // Рассылает сообщение чата всей комнате и сохраняет его в скользящей истории
 // комнаты — чтобы при случайном закрытии вкладки/приложения или обрыве связи
 // сообщения не терялись: новый или переподключившийся участник получает их
@@ -644,11 +822,14 @@ io.on('connection', (socket) => {
     // "мигания" при реконнекте, но без ошибок.
     socket.data.clientId = (clientId && String(clientId).slice(0, 64)) || socket.id;
 
+    let isNewRoom = false;
     if (!rooms[room]) {
-      rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null, youtubeVideo: null, aiHistory: [], ttt: null, members: new Map(), chatHistory: [] };
+      rooms[room] = createRoomState();
+      isNewRoom = true;
     }
     if (!rooms[room].members) rooms[room].members = new Map(); // на случай комнаты, созданной до обновления
     if (!rooms[room].chatHistory) rooms[room].chatHistory = [];
+    if (!rooms[room].timeline) rooms[room].timeline = [];
 
     // Если комната была запланирована к удалению (опустела), отменяем удаление —
     // кто-то вернулся
@@ -663,11 +844,16 @@ io.on('connection', (socket) => {
       video: rooms[room].video,
       currentTime: rooms[room].currentTime,
       playing: rooms[room].playing,
+      playbackUpdatedAt: rooms[room].playbackUpdatedAt,
+      stateVersion: rooms[room].stateVersion,
       reactions: rooms[room].reactions,
       streamLink: rooms[room].streamLink,
       externalVideo: rooms[room].externalVideo,
       youtubeVideo: rooms[room].youtubeVideo,
+      media: rooms[room].media,
       ttt: tttPublicState(rooms[room].ttt),
+      pinnedMessage: rooms[room].pinnedMessage,
+      timeline: rooms[room].timeline.slice(-40),
       chatHistory: rooms[room].chatHistory.map((m) => (
         m.id ? { ...m, reactions: rooms[room].reactions[m.id] || {} } : m
       ))
@@ -681,14 +867,18 @@ io.on('connection', (socket) => {
     // открытая вторая вкладка. В обоих случаях это не "новый человек" —
     // не объявляем повторное присоединение в чате.
     const existingMember = rooms[room].members.get(socket.data.clientId);
+    const wasReconnecting = !!existingMember?.leaveTimer;
     if (existingMember?.leaveTimer) {
       clearTimeout(existingMember.leaveTimer);
     }
     rooms[room].members.set(socket.data.clientId, {
+      clientId: socket.data.clientId,
       name: socket.data.name,
       avatar: socket.data.avatar,
       avatarPhoto: socket.data.avatarPhoto,
       socketId: socket.id,
+      status: 'watching',
+      lastActivity: Date.now(),
       leaveTimer: null
     });
 
@@ -697,10 +887,14 @@ io.on('connection', (socket) => {
         system: true,
         text: `${socket.data.name} присоединился(-ась)`
       });
+      addTimelineEvent(io, room, rooms[room], isNewRoom ? 'ROOM_CREATED' : 'USER_JOINED', socket.data.name, null);
+    } else if (wasReconnecting) {
+      addTimelineEvent(io, room, rooms[room], 'USER_RECONNECTED', socket.data.name, null);
     }
 
     io.to(room).emit('user-count', rooms[room].members.size);
     broadcastRoomUsers(room);
+    schedulePresenceBroadcast(room);
   });
 
   socket.on('select-video', ({ room, filename }) => {
@@ -708,10 +902,14 @@ io.on('connection', (socket) => {
     rooms[room].video = filename;
     rooms[room].currentTime = 0;
     rooms[room].playing = false;
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
     rooms[room].streamLink = null;
     rooms[room].externalVideo = null;
     rooms[room].youtubeVideo = null;
-    io.to(room).emit('video-selected', { filename });
+    rooms[room].media = mediaRecords[filename] || null;
+    io.to(room).emit('video-selected', { filename, media: rooms[room].media });
+    addTimelineEvent(io, room, rooms[room], 'VIDEO_SELECTED', socket.data.name, { title: rooms[room].media?.title || filename });
   });
 
   // Прямая ссылка на видеофайл (.mp4/.webm/.m3u8 и т.п.) с внешнего сервера.
@@ -725,9 +923,13 @@ io.on('connection', (socket) => {
     rooms[room].streamLink = null;
     rooms[room].externalVideo = trimmed;
     rooms[room].youtubeVideo = null;
+    rooms[room].media = null;
     rooms[room].currentTime = 0;
     rooms[room].playing = false;
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
     io.to(room).emit('external-video-selected', { url: trimmed, from: socket.data.name || 'Гость' });
+    addTimelineEvent(io, room, rooms[room], 'VIDEO_CHANGED', socket.data.name, { kind: 'external' });
   });
 
   // Ссылка на YouTube. В отличие от set-stream-link, тут клиент подключает
@@ -744,9 +946,13 @@ io.on('connection', (socket) => {
     rooms[room].streamLink = null;
     rooms[room].externalVideo = null;
     rooms[room].youtubeVideo = trimmed;
+    rooms[room].media = null;
     rooms[room].currentTime = 0;
     rooms[room].playing = false;
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
     io.to(room).emit('youtube-video-selected', { url: trimmed, from: socket.data.name || 'Гость' });
+    addTimelineEvent(io, room, rooms[room], 'VIDEO_CHANGED', socket.data.name, { kind: 'youtube' });
   });
 
   // Ссылка на трансляцию с другого сайта. Настоящую синхронизацию play/pause
@@ -760,27 +966,57 @@ io.on('connection', (socket) => {
     rooms[room].externalVideo = null;
     rooms[room].youtubeVideo = null;
     rooms[room].streamLink = trimmed;
+    rooms[room].media = null;
+    rooms[room].currentTime = 0;
+    rooms[room].playing = false;
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
     io.to(room).emit('stream-link-updated', { url: trimmed, from: socket.data.name || 'Гость' });
+    addTimelineEvent(io, room, rooms[room], 'VIDEO_CHANGED', socket.data.name, { kind: 'stream' });
   });
 
   socket.on('play', ({ room, time }) => {
     if (!rooms[room]) return;
+    const wasPlaying = rooms[room].playing;
     rooms[room].playing = true;
     rooms[room].currentTime = time;
-    socket.to(room).emit('sync-play', { time });
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
+    if (rooms[room].members.has(socket.data.clientId)) {
+      rooms[room].members.get(socket.data.clientId).status = 'watching';
+    }
+    socket.to(room).emit('sync-play', { time, stateVersion: rooms[room].stateVersion, updatedAt: rooms[room].playbackUpdatedAt });
+    schedulePresenceBroadcast(room);
+    if (!wasPlaying) addTimelineEvent(io, room, rooms[room], 'VIDEO_STARTED', socket.data.name, null);
   });
 
   socket.on('pause', ({ room, time }) => {
     if (!rooms[room]) return;
+    const wasPlaying = rooms[room].playing;
     rooms[room].playing = false;
     rooms[room].currentTime = time;
-    socket.to(room).emit('sync-pause', { time });
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
+    if (rooms[room].members.has(socket.data.clientId)) {
+      rooms[room].members.get(socket.data.clientId).status = 'paused';
+    }
+    socket.to(room).emit('sync-pause', { time, stateVersion: rooms[room].stateVersion, updatedAt: rooms[room].playbackUpdatedAt });
+    schedulePresenceBroadcast(room);
+    if (wasPlaying) addTimelineEvent(io, room, rooms[room], 'VIDEO_PAUSED', socket.data.name, null);
   });
 
   socket.on('seek', ({ room, time }) => {
     if (!rooms[room]) return;
+    const previousTime = rooms[room].currentTime;
     rooms[room].currentTime = time;
-    socket.to(room).emit('sync-seek', { time });
+    rooms[room].playbackUpdatedAt = Date.now();
+    rooms[room].stateVersion++;
+    socket.to(room).emit('sync-seek', { time, stateVersion: rooms[room].stateVersion, updatedAt: rooms[room].playbackUpdatedAt });
+    // В таймлайн попадают только заметные перемотки — иначе обычное
+    // "подвигать ползунок туда-сюда" завалило бы историю событий
+    if (Math.abs((time || 0) - (previousTime || 0)) > 10) {
+      addTimelineEvent(io, room, rooms[room], 'VIDEO_SEEKED', socket.data.name, null);
+    }
   });
 
   // Пользователь изменил имя и/или аватар в профиле, находясь в комнате
@@ -810,6 +1046,11 @@ io.on('connection', (socket) => {
 
   socket.on('chat-message', ({ room, text, image, gifUrl, voice, voiceDuration, replyTo }) => {
     if (!room) return;
+    if (rooms[room]?.members?.has(socket.data.clientId)) {
+      rooms[room].members.get(socket.data.clientId).status = 'chatting';
+      rooms[room].members.get(socket.data.clientId).lastActivity = Date.now();
+      schedulePresenceBroadcast(room);
+    }
     const trimmedText = (text || '').toString().trim().slice(0, 4000);
     // Картинка обязана быть именем файла, реально загруженным через /upload-image —
     // никаких произвольных путей/URL тут не принимаем
@@ -843,7 +1084,7 @@ io.on('connection', (socket) => {
       }
     }
 
-    if (!rooms[room]) rooms[room] = { video: null, currentTime: 0, playing: false, reactions: {}, streamLink: null, externalVideo: null, youtubeVideo: null, aiHistory: [], ttt: null, members: new Map(), chatHistory: [] };
+    if (!rooms[room]) rooms[room] = createRoomState();
     const id = randomUUID();
     rooms[room].reactions[id] = {};
     const mentions = extractMentions(trimmedText, getRoomNames(room));
@@ -946,9 +1187,31 @@ io.on('connection', (socket) => {
     if (!hadSameReaction) {
       if (!msgReactions[emoji]) msgReactions[emoji] = [];
       msgReactions[emoji].push(user);
+      addTimelineEvent(io, room, rooms[room], 'REACTION_SENT', user, { emoji });
     }
 
     io.to(room).emit('message-reaction-update', { messageId, reactions: msgReactions });
+  });
+
+  // Закрепление сообщения (4.1) — любой участник может закрепить/открепить;
+  // комната по задумке приватная и небольшая (как и всё остальное в
+  // Roomly), поэтому отдельная роль "хоста" тут не требуется.
+  socket.on('chat-pin', ({ room, messageId, text, name }) => {
+    if (!room || !rooms[room] || !messageId) return;
+    rooms[room].pinnedMessage = {
+      id: String(messageId).slice(0, 100),
+      text: String(text || '').slice(0, 300),
+      name: String(name || 'Гость').slice(0, 100),
+      pinnedBy: socket.data.name || 'Гость',
+      pinnedAt: Date.now()
+    };
+    io.to(room).emit('chat-pinned', rooms[room].pinnedMessage);
+  });
+
+  socket.on('chat-unpin', ({ room }) => {
+    if (!room || !rooms[room]) return;
+    rooms[room].pinnedMessage = null;
+    io.to(room).emit('chat-pinned', null);
   });
 
   // Начать новую партию в крестики-нолики. Тот, кто нажал "Начать" — играет за X,
@@ -1048,6 +1311,12 @@ io.on('connection', (socket) => {
     // устаревшего сокета. Ничего не делаем, он и так на месте.
     if (!member || member.socketId !== socket.id) return;
 
+    // Сразу показываем участника как "переподключается" остальным (5.2) —
+    // это не то же самое, что окончательный уход, который объявляется только
+    // если человек не вернётся за грейс-период ниже.
+    member.status = 'reconnecting';
+    schedulePresenceBroadcast(room);
+
     // Не объявляем уход сразу: обрыв интернета или сворачивание вкладки на
     // телефоне почти всегда заканчивается автопереподключением socket.io
     // через пару секунд. Даём паузу RECONNECT_GRACE_MS — если clientId
@@ -1059,9 +1328,11 @@ io.on('connection', (socket) => {
         system: true,
         text: `${member.name || 'Гость'} вышел(ла)`
       });
+      addTimelineEvent(io, room, rooms[room], 'USER_LEFT', member.name || 'Гость', null);
       const count = rooms[room].members.size;
       io.to(room).emit('user-count', count);
       broadcastRoomUsers(room);
+      schedulePresenceBroadcast(room);
 
       if (count === 0) {
         scheduleRoomCleanup(room);
