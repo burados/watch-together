@@ -31,6 +31,31 @@ if (PROVIDER === 'r2') {
     try {
       // Необязательная зависимость — установи "npm install @aws-sdk/client-s3",
       // если хочешь реально включить R2. Без неё приложение не падает.
+      s3Mod = require('@aws-sdk/client-s3');
+      const { S3Client } = s3Mod;
+      s3Client = new S3Client({
+        region: 'auto',
+        endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: { accessKeyId: R2_ACCESS_KEY_ID, secretAccessKey: R2_SECRET_ACCESS_KEY }
+      });
+      usingR2 = true;
+      console.log('[storage] Используется Cloudflare R2 как хранилище видео.');
+    } catch (e) {
+      console.warn('[storage] Пакет @aws-sdk/client-s3 не установлен — использую локальное хранилище (npm install @aws-sdk/client-s3 для R2).');
+    }
+  }
+}
+
+function provider() {
+  return usingR2 ? 'r2' : 'local';
+}
+
+async function existsLocal(key) {
+  return fs.existsSync(path.join(LOCAL_DIR, key));
+}
+
+// Удаляет файл из активного хранилища (используется автоочисткой старых файлов)
+async function deleteFile(key) {
   if (usingR2) {
     const { DeleteObjectCommand } = s3Mod;
     try {
@@ -66,6 +91,9 @@ async function uploadFileFromPath(localFilePath, key, contentType) {
   }
 }
 
+function getPublicUrl(key) {
+  if (usingR2 && R2_PUBLIC_BASE_URL) {
+    return R2_PUBLIC_BASE_URL.replace(/\/$/, '') + '/' + encodeURIComponent(key);
   }
   return null; // локально всегда отдаём через /video/:filename
 }
@@ -130,4 +158,3 @@ module.exports = {
   getPublicUrl,
   getRangeStream
 };
-
