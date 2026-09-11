@@ -682,6 +682,7 @@ body.in-room .grain-overlay{ animation-play-state:paused; }
   display:flex; align-items:center; justify-content:center;
   overflow:hidden;
   transition:max-height .2s var(--ease), min-height .2s var(--ease), aspect-ratio .2s var(--ease);
+  contain:layout paint;
 }
 .video-wrap:fullscreen{
   max-height:100vh; height:100vh; aspect-ratio:auto;
@@ -929,8 +930,7 @@ input[type=file]{ display:none; }
 .upload-menu{
   display:none; flex-direction:column; gap:2px;
   position:absolute; top:calc(100% + 8px); left:12px; z-index:20;
-  background:rgba(29,29,37,.97);
-  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  background:rgba(20,20,26,.98);
   border:1px solid var(--border); border-radius:16px;
   padding:6px; min-width:230px;
   box-shadow:var(--shadow-md);
@@ -1072,10 +1072,39 @@ select{
   background:var(--card);
   overflow:hidden;
   position:relative;
+  contain:layout paint;
 }
+
+/* Ручная регулировка высоты видео на мобильном — перетаскиваемая полоска
+   между видео и чатом. На десктопе высота видео считается через flex
+   (video-section flex:1 1 auto), а не через --video-h, поэтому там эта
+   ручка не нужна и скрыта той же медиа-границей (900px), что и остальная
+   мобильная раскладка. */
+.video-resize-handle{
+  flex-shrink:0; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:ns-resize; touch-action:none;
+  background:var(--card);
+  border-bottom:1px solid var(--border-soft);
+}
+.video-resize-grip{
+  width:36px; height:4px; border-radius:99px;
+  background:var(--border-strong);
+  transition:background .15s var(--ease), transform .15s var(--ease);
+}
+.video-resize-handle:active .video-resize-grip,
+.video-resize-handle.dragging .video-resize-grip{
+  background:var(--primary); transform:scaleX(1.15);
+}
+@media (min-width:900px){
+  .video-resize-handle{ display:none; }
+}
+.room.theater-mode .video-resize-handle{ display:none; }
+
 .chat-messages{
   flex:1 1 0; min-height:0;
   overflow-y:auto; overflow-x:hidden;
+  contain:layout paint;
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
   touch-action:pan-y;
@@ -1321,8 +1350,7 @@ select{
 .chat-more-menu{
   display:none;
   position:absolute; left:12px; bottom:calc(100% + 8px);
-  background:rgba(29,29,37,.96);
-  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  background:rgba(20,20,26,.98);
   border:1px solid var(--border);
   border-radius:18px;
   padding:8px; gap:4px;
@@ -1449,8 +1477,7 @@ select{
    ============================================================= */
 .overlay{
   position:fixed; inset:0; z-index:100;
-  background:rgba(0,0,0,.55);
-  backdrop-filter:blur(4px);
+  background:rgba(0,0,0,.72);
   display:none; align-items:flex-end; justify-content:center;
   animation:fade-in .2s var(--ease);
 }
@@ -1599,7 +1626,124 @@ select{
   .chat-input{ border-radius:0 0 var(--radius-lg) var(--radius-lg); padding:14px; }
   .bottom-nav{ display:none; }
 }
+
+/* ===== Phase 1-9: metadata / reconnect / sync / presence / timeline / chat additions ===== */
+
+.viewer-pill{ border:none; cursor:pointer; font-family:inherit; }
+
+.sync-pill{
+  display:flex; align-items:center; gap:6px;
+  font-size:12px; font-weight:600; color:var(--text-secondary);
+  background:var(--surface);
+  padding:6px 10px; border-radius:var(--radius-full);
+  white-space:nowrap; border:1px solid var(--border-soft);
+}
+.sync-dot{ width:7px; height:7px; border-radius:50%; background:#8a8a94; flex-shrink:0; transition:background .2s; }
+.sync-pill.state-connected .sync-dot,
+.sync-pill.state-synced .sync-dot{ background:var(--success); }
+.sync-pill.state-syncing .sync-dot,
+.sync-pill.state-reconnecting .sync-dot{ background:#d9a441; animation:pulse-dot 1.2s infinite; }
+.sync-pill.state-drift .sync-dot{ background:#e08a3c; }
+.sync-pill.state-disconnected .sync-dot{ background:var(--danger,#e05252); }
+
+/* На узких экранах 4 элемента в topbar-right (статус синхронизации,
+   счётчик зрителей, активность, настройки) не помещаются в одну строку —
+   прячем текстовые подписи, оставляя только цветной индикатор и счётчик */
+@media (max-width:380px){
+  .sync-pill{ padding:6px; gap:0; }
+  .sync-pill #syncLabel{ display:none; }
+  .viewer-pill{ padding:6px 9px 6px 7px; }
+}
+
+/* Media metadata card (Phase 1) */
+.media-card{
+  display:flex; gap:12px; padding:12px; margin:10px 0 0;
+  background:var(--card); border:1px solid var(--border-soft); border-radius:var(--radius-md);
+  align-items:flex-start; flex-shrink:0;
+}
+.media-card-poster{
+  width:56px; height:84px; object-fit:cover; border-radius:8px; flex-shrink:0; background:var(--surface);
+}
+.media-card-info{ min-width:0; flex:1; }
+.media-card-title{ font-weight:700; font-size:14.5px; letter-spacing:.2px; }
+.media-card-meta{ font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.media-card-overview{
+  font-size:12.5px; color:var(--text-secondary); margin-top:6px; line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+
+/* Live activity toasts (Phase 7) */
+.activity-toast-stack{
+  /* top сдвинут ниже кнопок разворачивания/PiP (34px высотой, начинаются с
+     top:10px) — иначе тост "Anna присоединилась" на пару секунд перекрывал
+     бы их визуально при каждом входе/старте просмотра */
+  position:absolute; top:52px; left:10px; right:10px; z-index:15;
+  display:flex; flex-direction:column; gap:6px; pointer-events:none;
+  align-items:flex-start;
+}
+.activity-toast{
+  background:rgba(20,20,26,.88); color:#fff; font-size:12.5px; font-weight:500;
+  padding:7px 12px; border-radius:var(--radius-full);
+  animation:activity-toast-in .18s var(--ease), activity-toast-out .25s ease 2.6s forwards;
+  max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+@keyframes activity-toast-in{ from{ opacity:0; transform:translateY(-6px); } to{ opacity:1; transform:translateY(0); } }
+@keyframes activity-toast-out{ to{ opacity:0; transform:translateY(-6px); } }
+
+/* Presence sheet (Phase 5) */
+.presence-list{ display:flex; flex-direction:column; gap:2px; max-height:60vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.presence-row{ display:flex; align-items:center; gap:10px; padding:9px 4px; }
+.presence-row-name{ font-weight:600; font-size:14px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.presence-row-status{ font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:4px; white-space:nowrap; }
+.presence-avatar{ width:34px; height:34px; border-radius:50%; flex-shrink:0; background:var(--surface); display:flex; align-items:center; justify-content:center; font-size:16px; overflow:hidden; }
+.presence-avatar img{ width:100%; height:100%; object-fit:cover; }
+
+/* Timeline sheet (Phase 6) */
+.timeline-list{ display:flex; flex-direction:column; max-height:60vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.timeline-row{ display:flex; gap:12px; padding:9px 2px; border-bottom:1px solid var(--border-soft); }
+.timeline-row:last-child{ border-bottom:none; }
+.timeline-time{ font-size:11.5px; color:var(--text-secondary); width:42px; flex-shrink:0; padding-top:1px; }
+.timeline-text{ font-size:13.5px; line-height:1.35; }
+.timeline-empty{ text-align:center; color:var(--text-secondary); font-size:13px; padding:24px 0; }
+
+/* Chat: pinned bar, search, mention filter (Phase 4) */
+.pinned-bar{
+  display:flex; align-items:center; gap:8px; padding:8px 12px;
+  background:var(--primary-soft); border-bottom:1px solid var(--border-soft);
+  cursor:pointer; flex-shrink:0;
+}
+.pinned-bar svg{ width:15px; height:15px; color:var(--primary); flex-shrink:0; }
+.pinned-bar-text{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.pinned-bar-name{ font-size:11px; font-weight:700; color:var(--primary); }
+.pinned-bar-msg{ font-size:12.5px; color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pinned-bar-close{ background:none; border:none; color:var(--text-secondary); font-size:13px; padding:4px; flex-shrink:0; }
+
+.chat-subheader{ display:flex; align-items:center; gap:6px; padding:6px 10px; border-bottom:1px solid var(--border-soft); flex-shrink:0; }
+.chat-filter-tabs{ display:flex; gap:4px; flex:1; }
+.chat-filter-tab{
+  border:none; background:transparent; color:var(--text-secondary);
+  font-size:12.5px; font-weight:600; padding:6px 10px; border-radius:var(--radius-full);
+}
+.chat-filter-tab.active{ background:var(--primary-soft); color:var(--primary); }
+.chat-search-btn{ width:32px; height:32px; }
+
+.chat-search-row{
+  display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--border-soft);
+  flex-shrink:0;
+}
+.chat-search-row svg{ width:16px; height:16px; color:var(--text-secondary); flex-shrink:0; }
+.chat-search-row input{
+  flex:1; background:transparent; border:none; color:var(--text-primary); font-size:13.5px; outline:none;
+}
+.chat-search-row button{ background:none; border:none; color:var(--text-secondary); padding:4px; }
+.chat-search-results{ max-height:40vh; overflow-y:auto; border-bottom:1px solid var(--border-soft); flex-shrink:0; }
+.chat-search-result{ padding:8px 12px; border-bottom:1px solid var(--border-soft); cursor:pointer; }
+.chat-search-result:last-child{ border-bottom:none; }
+.chat-search-result-name{ font-size:11.5px; font-weight:700; color:var(--primary); }
+.chat-search-result-text{ font-size:13px; color:var(--text-primary); margin-top:2px; }
+.chat-search-empty{ padding:16px; text-align:center; color:var(--text-secondary); font-size:13px; }
 </style>
+
 </head>
 <body>
 
@@ -1684,7 +1828,15 @@ select{
         </div>
       </div>
       <div class="topbar-right">
-        <span class="viewer-pill"><span class="live-dot"></span><span id="userCount">1 зритель</span></span>
+        <span class="sync-pill" id="syncPill" title="Статус синхронизации">
+          <span class="sync-dot" id="syncDot"></span><span id="syncLabel">Подключение…</span>
+        </span>
+        <button type="button" class="viewer-pill" id="viewerPillBtn" onclick="openPresenceSheet()">
+          <span class="live-dot"></span><span id="userCount">1 зритель</span>
+        </button>
+        <button class="icon-btn" onclick="openTimelineSheet()" aria-label="Активность комнаты" title="Активность">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        </button>
         <button class="icon-btn" onclick="openSettings()" aria-label="Настройки">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         </button>
@@ -1694,6 +1846,7 @@ select{
     <div class="room-body">
       <div class="video-section">
         <div class="video-wrap" id="videoWrap">
+          <div class="activity-toast-stack" id="activityToastStack"></div>
           <button type="button" class="expand-btn ripple-host" id="expandBtn" onclick="toggleFullscreen()" aria-label="Развернуть видео" title="Развернуть видео" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
           </button>
@@ -1768,6 +1921,15 @@ select{
           </button>
         </div>
 
+        <div class="media-card" id="mediaCard" style="display:none;">
+          <img class="media-card-poster" id="mediaCardPoster" alt="" />
+          <div class="media-card-info">
+            <div class="media-card-title" id="mediaCardTitle"></div>
+            <div class="media-card-meta" id="mediaCardMeta"></div>
+            <div class="media-card-overview" id="mediaCardOverview"></div>
+          </div>
+        </div>
+
         <div class="stage-toolbar">
           <button type="button" class="upload-pill ripple-host" onclick="toggleUploadMenu()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
@@ -1823,7 +1985,34 @@ select{
 
       <div class="resize-handle" id="resizeHandle"></div>
 
+      <div class="video-resize-handle" id="videoResizeHandle" title="Потяни, чтобы изменить высоту видео">
+        <div class="video-resize-grip"></div>
+      </div>
+
       <div class="chat-section">
+        <div class="pinned-bar" id="pinnedBar" style="display:none;" onclick="openPinnedMessage()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg>
+          <div class="pinned-bar-text">
+            <span class="pinned-bar-name" id="pinnedBarName"></span>
+            <span class="pinned-bar-msg" id="pinnedBarMsg"></span>
+          </div>
+          <button type="button" class="pinned-bar-close" onclick="event.stopPropagation(); unpinMessage();" aria-label="Открепить">✕</button>
+        </div>
+        <div class="chat-subheader">
+          <div class="chat-filter-tabs" id="chatFilterTabs">
+            <button type="button" class="chat-filter-tab active" data-filter="all" onclick="setChatFilter('all')">Все</button>
+            <button type="button" class="chat-filter-tab" data-filter="mentions" onclick="setChatFilter('mentions')">@ Упоминания</button>
+          </div>
+          <button type="button" class="icon-btn chat-search-btn" onclick="toggleChatSearch()" aria-label="Поиск по чату">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          </button>
+        </div>
+        <div class="chat-search-row" id="chatSearchRow" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="chatSearchInput" placeholder="Поиск по сообщениям..." autocomplete="off" oninput="runChatSearch()" />
+          <button type="button" onclick="toggleChatSearch()" aria-label="Закрыть поиск">✕</button>
+        </div>
+        <div class="chat-search-results" id="chatSearchResults" style="display:none;"></div>
         <div class="chat-messages" id="chatMessages">
           <div class="chat-empty" id="chatEmpty">
             <svg class="chat-empty-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2003,6 +2192,24 @@ select{
   </div>
 </div>
 
+<!-- Presence sheet -->
+<div class="overlay" id="presenceOverlay" onclick="if(event.target===this) closeSheet('presenceOverlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Участники <button class="icon-btn" onclick="closeSheet('presenceOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="presence-list" id="presenceList"></div>
+  </div>
+</div>
+
+<!-- Timeline sheet -->
+<div class="overlay" id="timelineOverlay" onclick="if(event.target===this) closeSheet('timelineOverlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Активность <button class="icon-btn" onclick="closeSheet('timelineOverlay')" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+    <div class="timeline-list" id="timelineList"></div>
+  </div>
+</div>
+
 <!-- Крестики-нолики -->
 <div class="overlay" id="tttOverlay" onclick="if(event.target===this) closeSheet('tttOverlay')">
   <div class="sheet">
@@ -2091,6 +2298,17 @@ let lastTypingEmit = 0;
 let remoteTypingTimeout = null;
 let currentTypingUser = null;
 let notificationsEnabled = localStorage.getItem('wt_notifications') === '1';
+// Ручная высота видео на мобильном (см. initVideoResize ниже) — доля 0..1
+// между минимальной и максимальной допустимой высотой; null = авто-расчёт
+// (как было раньше, до ручного вмешательства пользователя).
+let manualVideoRatio = null;
+try {
+  const savedRatio = localStorage.getItem('wt_video_ratio');
+  if (savedRatio !== null) {
+    const parsed = parseFloat(savedRatio);
+    if (!Number.isNaN(parsed)) manualVideoRatio = parsed;
+  }
+} catch (e) {}
 let tttMySymbol = null; // 'X' или 'O' — назначается сервером
 let tttLastState = null;
 let roomMemberNames = []; // имена остальных участников комнаты, для @упоминаний
@@ -2158,7 +2376,17 @@ function sizeVideoWrap(appH) {
   const minH = kbOpen ? 90 : 160;
   const maxH = appH * (kbOpen ? 0.62 : 0.72);
 
-  let videoH = appH - topbarH - toolbarH - navH - chatFloor;
+  // Если пользователь сам перетащил разделитель (см. initVideoResize), его
+  // выбор — это доля между minH и maxH, а не автоматический расчёт по
+  // доступному месту. Так ручной выбор остаётся осмысленным и при повороте
+  // экрана, и при открытии клавиатуры — просто пересчитывается в новых
+  // границах, а не сбрасывается на дефолт.
+  let videoH;
+  if (manualVideoRatio !== null) {
+    videoH = minH + manualVideoRatio * (maxH - minH);
+  } else {
+    videoH = appH - topbarH - toolbarH - navH - chatFloor;
+  }
   videoH = Math.max(minH, Math.min(videoH, maxH));
   document.documentElement.style.setProperty('--video-h', videoH + 'px');
 }
@@ -2388,6 +2616,8 @@ function setupSocket() {
   // receiving chat/sync until the user manually re-entered the room.
   let hasConnectedBefore = false;
   socket.on('connect', () => {
+    connectionState = 'CONNECTED';
+    setSyncPill('connected', hasConnectedBefore ? 'Синхронизация…' : 'Подключено');
     socket.emit('join-room', { room, name, avatar: avatarEmoji, avatarPhoto, clientId });
     loadVideoList();
     if (hasConnectedBefore) showToast('Соединение восстановлено');
@@ -2398,7 +2628,14 @@ function setupSocket() {
   });
 
   socket.on('disconnect', () => {
+    connectionState = 'DISCONNECTED';
+    setSyncPill('disconnected', 'Нет связи');
     showToast('Соединение потеряно, переподключение…');
+  });
+
+  socket.io.on('reconnect_attempt', () => {
+    connectionState = 'RECONNECTING';
+    setSyncPill('reconnecting', 'Реконнект…');
   });
 
   // Сообщения чата, которые пришли до открытия комнаты (см. chatHistory в
@@ -2441,6 +2678,26 @@ function setupSocket() {
       showStreamLink(state.streamLink, null, false);
     }
     renderTttState(state.ttt);
+    // room-state — это полный авторитетный снимок на момент входа/переподключения,
+    // а не инкрементальное обновление, поэтому применяем его безусловно, в обход
+    // проверки версии в updateAuthoritativePlayback: та проверка защищает от
+    // "устаревших" play/pause/seek не по порядку внутри ОДНОЙ комнаты, но её
+    // счётчик версий стартует заново в каждой новой комнате — без явного сброса
+    // здесь после выхода из одной комнаты и входа в другую (где номер версии
+    // на сервере снова маленький) старое большое значение стало бы блокировать
+    // применение свежего состояния до тех пор, пока версия не "догонит" его.
+    lastAuthoritativePlayback = {
+      time: state.currentTime || 0,
+      playing: !!state.playing,
+      updatedAt: state.playbackUpdatedAt || Date.now(),
+      stateVersion: state.stateVersion || 0
+    };
+    renderMediaCard(state.media);
+    renderPinnedBar(state.pinnedMessage);
+    if (Array.isArray(state.timeline)) {
+      timelineEvents = state.timeline;
+      state.timeline.forEach((ev) => seenActivityIds.add(ev.id)); // не дублируем тостами то, что уже было
+    }
   });
 
   socket.on('ttt-state', (state) => renderTttState(state));
@@ -2452,27 +2709,54 @@ function setupSocket() {
     showToast(`${name || 'Игрок'} вышел(-а) из игры (${symbol}) — ждём замену`);
   });
 
-  socket.on('video-selected', ({ filename }) => {
+  socket.on('video-selected', ({ filename, media }) => {
     showVideo(filename, false);
+    renderMediaCard(media);
+  });
+
+  socket.on('media-updated', (media) => {
+    renderMediaCard(media);
+  });
+
+  socket.on('presence-update', (list) => {
+    renderPresenceList(list);
+  });
+
+  socket.on('room-timeline-event', (ev) => {
+    timelineEvents.push(ev);
+    if (timelineEvents.length > 150) timelineEvents = timelineEvents.slice(-150);
+    if (document.getElementById('timelineOverlay')?.classList.contains('show')) renderTimelineList();
+  });
+
+  socket.on('room-activity', (ev) => {
+    showActivityToast(ev);
+  });
+
+  socket.on('chat-pinned', (pinned) => {
+    renderPinnedBar(pinned);
   });
 
   socket.on('external-video-selected', ({ url, from }) => {
     showExternalVideo(url, from, false);
+    clearMediaCard();
   });
 
   socket.on('youtube-video-selected', ({ url, from }) => {
     showYoutubeVideo(url, from, false);
+    clearMediaCard();
   });
 
   socket.on('stream-link-updated', ({ url, from }) => {
     showStreamLink(url, from, false);
+    clearMediaCard();
   });
 
   // Эти три события общие для видео-файла и YouTube — сервер не знает и
   // не должен знать, какой именно плеер сейчас активен на клиенте, он
   // просто транслирует time/playing всем остальным.
-  socket.on('sync-play', ({ time }) => {
+  socket.on('sync-play', ({ time, stateVersion, updatedAt }) => {
     startSyncing('playing');
+    updateAuthoritativePlayback(time, true, updatedAt, stateVersion);
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
       ytPlayerInstance.playVideo();
@@ -2489,8 +2773,9 @@ function setupSocket() {
     }
   });
 
-  socket.on('sync-pause', ({ time }) => {
+  socket.on('sync-pause', ({ time, stateVersion, updatedAt }) => {
     startSyncing('paused');
+    updateAuthoritativePlayback(time, false, updatedAt, stateVersion);
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
       ytPlayerInstance.pauseVideo();
@@ -2501,8 +2786,9 @@ function setupSocket() {
     }
   });
 
-  socket.on('sync-seek', ({ time }) => {
+  socket.on('sync-seek', ({ time, stateVersion, updatedAt }) => {
     startSyncing(null); // после перемотки не ждём конкретного play/pause состояния
+    updateAuthoritativePlayback(time, lastAuthoritativePlayback.playing, updatedAt, stateVersion);
     if (currentYoutubeVideo && ytPlayerInstance) {
       ytPlayerInstance.seekTo(time, true);
     } else {
@@ -3851,6 +4137,16 @@ function addChatMessage(msg, bulkLoad) {
       line.appendChild(reactBtn);
     }
 
+    if (msg.id && msg.text) {
+      const pinBtn = document.createElement('button');
+      pinBtn.type = 'button';
+      pinBtn.className = 'msg-react-btn';
+      pinBtn.setAttribute('aria-label', 'Закрепить сообщение');
+      pinBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg>';
+      pinBtn.onclick = (ev) => { ev.stopPropagation(); pinMessage(msg.id, displayName, msg.text); };
+      line.appendChild(pinBtn);
+    }
+
     bodyEl.appendChild(nameEl);
 
     if (msg.replyTo) {
@@ -3957,8 +4253,283 @@ function addChatMessage(msg, bulkLoad) {
     if (msg.reactions) renderMessageReactions(row, msg.reactions);
   }
 
-  if (wasNearBottom) box.scrollTop = box.scrollHeight;
+  if (wasNearBottom) requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
 }
+
+/* =============================================================
+   Новое: метаданные видео, умный реконнект + статус синхронизации,
+   присутствие, таймлайн/активность, закреп/поиск/фильтр в чате
+   ============================================================= */
+
+function formatMediaDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  if (h > 0) return `${h}ч ${m}м`;
+  return `${m}м`;
+}
+
+// --- Метаданные видео (Phase 1) ---
+function renderMediaCard(media) {
+  const card = document.getElementById('mediaCard');
+  if (!media || !media.title) { card.style.display = 'none'; return; }
+  const poster = document.getElementById('mediaCardPoster');
+  if (media.posterUrl) {
+    poster.src = media.posterUrl;
+    poster.style.display = '';
+  } else {
+    poster.style.display = 'none';
+  }
+  document.getElementById('mediaCardTitle').textContent = media.title;
+  const metaParts = [];
+  if (media.year) metaParts.push(media.year);
+  if (media.duration) metaParts.push(formatMediaDuration(media.duration));
+  if (media.rating) metaParts.push('★ ' + media.rating.toFixed(1));
+  document.getElementById('mediaCardMeta').textContent = metaParts.join(' · ');
+  document.getElementById('mediaCardOverview').textContent = media.overview || '';
+  card.style.display = media.overview || media.posterUrl || media.rating ? 'flex' : 'none';
+}
+function clearMediaCard() {
+  document.getElementById('mediaCard').style.display = 'none';
+}
+
+// --- Умный реконнект + статус синхронизации (Phase 2-3) ---
+// lastAuthoritativePlayback хранит последнее известное авторитетное
+// состояние сервера (время/играет ли/когда обновлено) — по нему на клиенте
+// без единого лишнего сетевого запроса вычисляется дрейф синхронизации.
+let lastAuthoritativePlayback = { time: 0, playing: false, updatedAt: Date.now(), stateVersion: 0 };
+let connectionState = 'CONNECTED'; // CONNECTED | RECONNECTING | DISCONNECTED
+
+function setSyncPill(stateClass, label) {
+  const pill = document.getElementById('syncPill');
+  if (!pill) return;
+  pill.className = 'sync-pill state-' + stateClass;
+  document.getElementById('syncLabel').textContent = label;
+}
+
+function updateAuthoritativePlayback(time, playing, updatedAt, stateVersion) {
+  // Защита от гонки: устаревшее событие (более старая версия состояния),
+  // пришедшее не по порядку после переподключения, не должно откатывать
+  // уже применённое более новое состояние.
+  if (typeof stateVersion === 'number' && stateVersion < lastAuthoritativePlayback.stateVersion) return;
+  lastAuthoritativePlayback = {
+    time: time || 0,
+    playing: !!playing,
+    updatedAt: updatedAt || Date.now(),
+    stateVersion: stateVersion || 0
+  };
+}
+
+function getLocalPlayerTime() {
+  if (currentYoutubeVideo && ytPlayerInstance && typeof ytPlayerInstance.getCurrentTime === 'function') {
+    try { return ytPlayerInstance.getCurrentTime(); } catch (e) { return null; }
+  }
+  const player = document.getElementById('player');
+  if (player && player.style.display !== 'none') return player.currentTime;
+  return null;
+}
+
+// Раз в пару секунд сверяем локальное время плеера с расчётным
+// "авторитетным" временем сервера (время + сколько прошло с момента
+// последнего play/pause/seek) — без единого доп. запроса по сети.
+setInterval(() => {
+  if (connectionState !== 'CONNECTED') return;
+  if (syncing) { setSyncPill('syncing', 'Синхронизация…'); return; }
+  const localTime = getLocalPlayerTime();
+  if (localTime === null) { setSyncPill('connected', 'Подключено'); return; }
+  const expected = lastAuthoritativePlayback.playing
+    ? lastAuthoritativePlayback.time + (Date.now() - lastAuthoritativePlayback.updatedAt) / 1000
+    : lastAuthoritativePlayback.time;
+  const drift = Math.abs(localTime - expected);
+  if (drift < 0.3) {
+    setSyncPill('synced', 'В синхроне');
+  } else if (drift < 2) {
+    setSyncPill('drift', drift.toFixed(1) + 'с');
+  } else {
+    setSyncPill('drift', 'Рассинхрон');
+  }
+}, 2000);
+
+// --- Присутствие (Phase 5) ---
+const PRESENCE_STATUS_LABEL = {
+  watching: '🟢 Смотрит',
+  paused: '🟡 Пауза',
+  chatting: '💬 Пишет в чат',
+  reconnecting: '🔄 Переподключение',
+  disconnected: '🔴 Не в сети'
+};
+function renderPresenceList(list) {
+  const box = document.getElementById('presenceList');
+  if (!box) return;
+  box.innerHTML = '';
+  (list || []).forEach((m) => {
+    const row = document.createElement('div');
+    row.className = 'presence-row';
+    const avatar = document.createElement('div');
+    avatar.className = 'presence-avatar';
+    renderAvatarEl(avatar, m.name, m.avatar, m.avatarPhoto || '');
+    const nameEl = document.createElement('div');
+    nameEl.className = 'presence-row-name';
+    nameEl.textContent = m.name + (m.name === name ? ' (вы)' : '');
+    const statusEl = document.createElement('div');
+    statusEl.className = 'presence-row-status';
+    statusEl.textContent = PRESENCE_STATUS_LABEL[m.status] || m.status || '';
+    row.appendChild(avatar);
+    row.appendChild(nameEl);
+    row.appendChild(statusEl);
+    box.appendChild(row);
+  });
+  if (!list || !list.length) {
+    box.innerHTML = '<div class="timeline-empty">Пока никого нет</div>';
+  }
+}
+function openPresenceSheet() { openSheet('presenceOverlay'); }
+
+// --- Таймлайн + живая активность (Phase 6-7) ---
+const TIMELINE_ICON = {
+  ROOM_CREATED: '✨', USER_JOINED: '✨', USER_LEFT: '👋', USER_RECONNECTED: '🔄',
+  VIDEO_SELECTED: '🎬', VIDEO_CHANGED: '🎬', VIDEO_STARTED: '▶️', VIDEO_PAUSED: '⏸️',
+  VIDEO_SEEKED: '⏩', REACTION_SENT: '😂'
+};
+function timelineText(ev) {
+  const who = ev.actor || 'Кто-то';
+  switch (ev.type) {
+    case 'ROOM_CREATED': return `${who} создал(а) комнату`;
+    case 'USER_JOINED': return `${who} присоединился(-ась)`;
+    case 'USER_LEFT': return `${who} вышел(ла)`;
+    case 'USER_RECONNECTED': return `${who} переподключился(-ась)`;
+    case 'VIDEO_SELECTED': return `${who} выбрал(а) видео${ev.data?.title ? ' — ' + ev.data.title : ''}`;
+    case 'VIDEO_CHANGED': return `${who} сменил(а) видео`;
+    case 'VIDEO_STARTED': return 'Просмотр начался';
+    case 'VIDEO_PAUSED': return `${who} поставил(а) на паузу`;
+    case 'VIDEO_SEEKED': return `${who} перемотал(а)`;
+    case 'REACTION_SENT': return `${who} отреагировал(а) ${ev.data?.emoji || ''}`;
+    default: return who;
+  }
+}
+let timelineEvents = [];
+function renderTimelineList() {
+  const box = document.getElementById('timelineList');
+  if (!box) return;
+  if (!timelineEvents.length) {
+    box.innerHTML = '<div class="timeline-empty">Пока ничего не произошло</div>';
+    return;
+  }
+  box.innerHTML = '';
+  timelineEvents.slice().reverse().forEach((ev) => {
+    const row = document.createElement('div');
+    row.className = 'timeline-row';
+    const time = document.createElement('div');
+    time.className = 'timeline-time';
+    time.textContent = formatTime(new Date(ev.timestamp));
+    const text = document.createElement('div');
+    text.className = 'timeline-text';
+    text.textContent = (TIMELINE_ICON[ev.type] || '•') + ' ' + timelineText(ev);
+    row.appendChild(time);
+    row.appendChild(text);
+    box.appendChild(row);
+  });
+}
+function openTimelineSheet() { renderTimelineList(); openSheet('timelineOverlay'); }
+
+const seenActivityIds = new Set(); // защита от повторного показа тоста после переподключения
+function showActivityToast(ev) {
+  if (seenActivityIds.has(ev.id)) return;
+  seenActivityIds.add(ev.id);
+  // На долгой сессии множество могло бы расти бесконечно — дедупликация
+  // реально нужна только в первые секунды после реконнекта, поэтому
+  // периодически просто сбрасываем накопленное, ничего не теряя на практике.
+  if (seenActivityIds.size > 500) seenActivityIds.clear();
+  const stack = document.getElementById('activityToastStack');
+  if (!stack) return;
+  const toast = document.createElement('div');
+  toast.className = 'activity-toast';
+  toast.textContent = (TIMELINE_ICON[ev.type] || '•') + ' ' + timelineText(ev);
+  stack.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+  // не даём стеку расти бесконечно, если события идут очень часто
+  while (stack.children.length > 4) stack.removeChild(stack.firstChild);
+}
+
+// --- Закреп / поиск / фильтр в чате (Phase 4) ---
+function renderPinnedBar(pinned) {
+  const bar = document.getElementById('pinnedBar');
+  if (!pinned) { bar.style.display = 'none'; return; }
+  document.getElementById('pinnedBarName').textContent = '📌 ' + (pinned.name || 'Гость');
+  document.getElementById('pinnedBarMsg').textContent = pinned.text || '';
+  bar.style.display = 'flex';
+  bar.dataset.id = pinned.id;
+}
+function pinMessage(id, msgName, text) {
+  socket.emit('chat-pin', { room, messageId: id, name: msgName, text });
+}
+function unpinMessage() {
+  socket.emit('chat-unpin', { room });
+}
+function openPinnedMessage() {
+  const bar = document.getElementById('pinnedBar');
+  if (bar.dataset.id) jumpToMessage(bar.dataset.id);
+}
+
+let chatFilterMode = 'all';
+function setChatFilter(mode) {
+  chatFilterMode = mode;
+  document.querySelectorAll('.chat-filter-tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.filter === mode);
+  });
+  document.querySelectorAll('#chatMessagesInner .msg-row').forEach((row) => {
+    if (row.classList.contains('system')) { row.style.display = ''; return; }
+    row.style.display = (mode === 'all' || row.classList.contains('mentioned')) ? '' : 'none';
+  });
+}
+
+function toggleChatSearch() {
+  const row = document.getElementById('chatSearchRow');
+  const results = document.getElementById('chatSearchResults');
+  const opening = row.style.display === 'none';
+  row.style.display = opening ? 'flex' : 'none';
+  results.style.display = 'none';
+  if (opening) {
+    document.getElementById('chatSearchInput').value = '';
+    document.getElementById('chatSearchInput').focus();
+  }
+}
+function runChatSearch() {
+  const q = document.getElementById('chatSearchInput').value.trim().toLowerCase();
+  const results = document.getElementById('chatSearchResults');
+  if (!q) { results.style.display = 'none'; return; }
+  const matches = [];
+  document.querySelectorAll('#chatMessagesInner .msg-row:not(.system)').forEach((row) => {
+    const textEl = row.querySelector('.msg-text');
+    const nameEl = row.querySelector('.msg-name');
+    const text = textEl ? textEl.textContent : '';
+    if (text.toLowerCase().includes(q) && row.dataset.id) {
+      matches.push({ id: row.dataset.id, name: nameEl ? nameEl.textContent : 'Гость', text });
+    }
+  });
+  results.style.display = 'block';
+  if (!matches.length) {
+    results.innerHTML = '<div class="chat-search-empty">Ничего не найдено</div>';
+    return;
+  }
+  results.innerHTML = '';
+  matches.slice(0, 30).forEach((m) => {
+    const item = document.createElement('div');
+    item.className = 'chat-search-result';
+    const n = document.createElement('div');
+    n.className = 'chat-search-result-name';
+    n.textContent = m.name;
+    const t = document.createElement('div');
+    t.className = 'chat-search-result-text';
+    t.textContent = m.text;
+    item.appendChild(n);
+    item.appendChild(t);
+    item.onclick = () => { toggleChatSearch(); jumpToMessage(m.id); };
+    results.appendChild(item);
+  });
+}
+
+
 
 /* -----------------------------------------------------------
    Профиль (имя + аватар — хранится локально, синхронизируется
@@ -4676,6 +5247,73 @@ function leaveRoom() {
   document.getElementById('roomRoot').classList.remove('theater-mode');
   renderRecentRooms();
 }
+
+/* -----------------------------------------------------------
+   Ручная регулировка высоты видео на мобильном (перетаскиванием)
+   ----------------------------------------------------------- */
+(function initVideoResize() {
+  const handle = document.getElementById('videoResizeHandle');
+  if (!handle) return;
+
+  let dragging = false;
+  let startY = 0;
+  let startVideoH = 0;
+
+  // Те же границы, что использует автоматический расчёт в sizeVideoWrap —
+  // руками нельзя схлопнуть видео или чат сильнее, чем позволяет авторежим.
+  function getBounds() {
+    const appH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const kbOpen = document.body.classList.contains('kb-open');
+    return { minH: kbOpen ? 90 : 160, maxH: appH * (kbOpen ? 0.62 : 0.72) };
+  }
+
+  function currentVideoH() {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--video-h').trim();
+    const parsed = parseFloat(v);
+    return Number.isNaN(parsed) ? document.getElementById('videoWrap').getBoundingClientRect().height : parsed;
+  }
+
+  function moveDrag(clientY) {
+    if (!dragging) return;
+    const { minH, maxH } = getBounds();
+    let h = startVideoH + (clientY - startY);
+    h = Math.max(minH, Math.min(h, maxH));
+    document.documentElement.style.setProperty('--video-h', h + 'px');
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    const { minH, maxH } = getBounds();
+    const h = currentVideoH();
+    // Сохраняем не абсолютный пиксель, а долю между minH и maxH — так выбор
+    // остаётся осмысленным при повороте экрана, открытии клавиатуры и на
+    // другом устройстве, где эти границы отличаются.
+    const ratio = maxH > minH ? Math.max(0, Math.min(1, (h - minH) / (maxH - minH))) : 0.5;
+    manualVideoRatio = ratio;
+    try { localStorage.setItem('wt_video_ratio', ratio.toFixed(3)); } catch (e) {}
+  }
+
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    startY = e.clientY;
+    startVideoH = currentVideoH();
+    handle.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', (e) => moveDrag(e.clientY));
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+
+  // Двойной тап/клик по ручке — сброс к автоматической высоте
+  handle.addEventListener('dblclick', () => {
+    manualVideoRatio = null;
+    try { localStorage.removeItem('wt_video_ratio'); } catch (e) {}
+    sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  });
+})();
 
 /* -----------------------------------------------------------
    Desktop resizable chat panel
