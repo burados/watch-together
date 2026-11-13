@@ -3,9 +3,11 @@
 // Кэшируем только статическую оболочку. Видео, сокеты и API — всегда напрямую из сети,
 // их кэшировать нельзя (список видео и состояние комнаты постоянно меняются).
 
-const CACHE_NAME = 'roomly-shell-v3'; // версия увеличена, чтобы старый кэш точно сбросился после этого обновления
+const CACHE_NAME = 'roomly-shell-v4'; // версия увеличена, чтобы старый кэш точно сбросился после этого обновления
 const SHELL_FILES = [
   '/',
+  '/css/app.css',
+  '/js/app.js',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
@@ -44,7 +46,7 @@ self.addEventListener('fetch', (event) => {
   // Раньше она отдавалась "кэш-сначала", из-за чего после каждого деплоя
   // люди ещё долго видели предыдущую версию сайта. Кэш теперь только
   // запасной вариант на случай, если сети совсем нет (офлайн).
-  if (event.request.mode === 'navigate' || url.pathname === '/') {
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.startsWith('/css/') || url.pathname.startsWith('/js/')) {
     event.respondWith(
       fetch(event.request)
         .then((resp) => {
