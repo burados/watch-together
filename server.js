@@ -735,8 +735,25 @@ function getRoomNames(room) {
   return Array.from(names);
 }
 
+// Участники с аватарками — для вкладки «Участники». Дубли имён схлопываются
+// (одна и та же персона в двух вкладках показывается один раз).
+function getRoomUsers(room) {
+  const members = rooms[room]?.members;
+  if (!members) return [];
+  const byName = new Map();
+  members.forEach((m) => {
+    if (!m.name || byName.has(m.name)) return;
+    byName.set(m.name, {
+      name: m.name,
+      avatar: m.avatar || '',
+      avatarPhoto: m.avatarPhoto ? ('/avatars/' + m.avatarPhoto) : ''
+    });
+  });
+  return Array.from(byName.values());
+}
+
 function broadcastRoomUsers(room) {
-  io.to(room).emit('room-users', { names: getRoomNames(room) });
+  io.to(room).emit('room-users', { names: getRoomNames(room), users: getRoomUsers(room) });
 }
 
 // Рассылает сообщение чата всей комнате и сохраняет его в скользящей истории
@@ -964,6 +981,9 @@ io.on('connection', (socket) => {
     socket.data.name = newName;
     socket.data.avatar = newAvatar;
     socket.data.avatarPhoto = isValidAvatarPhoto(avatarPhoto) ? avatarPhoto : '';
+    // Обновляем и запись участника — иначе список «Участники» показывал бы старое имя/аватар
+    const me = rooms[room]?.members?.get(socket.data.clientId);
+    if (me) { me.name = newName; me.avatar = newAvatar; me.avatarPhoto = socket.data.avatarPhoto; }
     if (newName !== oldName) {
       broadcastChatMessage(room, { system: true, text: `${oldName} теперь известен(на) как ${newName}` });
     }
