@@ -121,14 +121,23 @@ async function getRangeStream(key, rangeHeader, mimeType) {
   }
 
   const filePath = path.join(LOCAL_DIR, key);
-  if (!fs.existsSync(filePath)) return null;
-  const stat = fs.statSync(filePath);
+  let stat;
+  try { stat = await fs.promises.stat(filePath); } catch (e) { return null; }
   const fileSize = stat.size;
 
   if (rangeHeader) {
-    const parts = rangeHeader.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (!m || (m[1] === '' && m[2] === '')) return { invalidRange: true, fileSize };
+    let start, end;
+    if (m[1] === '') { // суффикс: bytes=-500
+      const n = parseInt(m[2], 10);
+      start = Math.max(0, fileSize - n);
+      end = fileSize - 1;
+    } else {
+      start = parseInt(m[1], 10);
+      end = m[2] ? Math.min(parseInt(m[2], 10), fileSize - 1) : fileSize - 1;
+    }
+    if (start >= fileSize || start > end) return { invalidRange: true, fileSize };
     const chunkSize = end - start + 1;
     return {
       stream: fs.createReadStream(filePath, { start, end }),
