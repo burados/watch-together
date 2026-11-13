@@ -7,25 +7,52 @@
 <script>
 (function(){
   try {
+    var THEMES = {
+      night:  { name:'Ночь',    accent:'violet', color:'#0C0B17' },
+      light:  { name:'Светлая', accent:'violet', color:'#F4F2FF' },
+      cinema: { name:'Кинозал', accent:'gold',   color:'#080808' }
+    };
+    window.WT_THEMES = THEMES;
     var t = localStorage.getItem('wt_theme');
-    if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    if (t === 'dark' || !THEMES[t]) t = 'night'; // старая «Тёмная» → «Ночь»
+    document.documentElement.setAttribute('data-theme', t);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', THEMES[t].color);
   } catch (e) {}
   try {
-    // Акцентный цвет применяем до отрисовки — иначе будет вспышка золотого
-    // цвета по умолчанию перед подстановкой сохранённого выбора.
-    var ACCENTS = {
-      gold:   { primary:'#C9A84E', hover:'#DDBA57', soft:'rgba(201,168,78,.14)',  ink:'#1a1508' },
-      violet: { primary:'#7C5CFF', hover:'#9B82FF', soft:'rgba(124,92,255,.16)', ink:'#ffffff' },
-      blue:   { primary:'#6C8CFF', hover:'#8AA3FF', soft:'rgba(108,140,255,.16)', ink:'#ffffff' },
-      mint:   { primary:'#42D392', hover:'#5FE0A8', soft:'rgba(66,211,146,.16)', ink:'#06231a' },
-      coral:  { primary:'#FF5A76', hover:'#FF7A90', soft:'rgba(255,90,118,.16)', ink:'#ffffff' },
-      orange: { primary:'#FF9F45', hover:'#FFB768', soft:'rgba(255,159,69,.16)', ink:'#2b1400' },
-      pink:   { primary:'#FF6FB0', hover:'#FF8FC2', soft:'rgba(255,111,176,.16)', ink:'#2b0018' },
-      cyan:   { primary:'#38D6E0', hover:'#5FE4EC', soft:'rgba(56,214,224,.16)', ink:'#002a2d' }
+    // Акцентный цвет применяем до отрисовки — иначе будет вспышка цвета
+    // по умолчанию перед подстановкой сохранённого выбора.
+    // У каждой темы свой набор акцентов, подобранный под её фон
+    var ACCENTS_BY_THEME = {
+      night: {
+        violet: { primary:'#7C5CFF', hover:'#9B82FF', soft:'rgba(124,92,255,.16)', ink:'#ffffff' },
+        blue:   { primary:'#5B8CFF', hover:'#7DA3FF', soft:'rgba(91,140,255,.16)', ink:'#ffffff' },
+        cyan:   { primary:'#38D6E0', hover:'#5FE4EC', soft:'rgba(56,214,224,.16)', ink:'#002a2d' },
+        mint:   { primary:'#42D392', hover:'#5FE0A8', soft:'rgba(66,211,146,.16)', ink:'#06231a' },
+        pink:   { primary:'#FF6FB0', hover:'#FF8FC2', soft:'rgba(255,111,176,.16)', ink:'#2b0018' }
+      },
+      light: {
+        violet: { primary:'#6A4DEF', hover:'#8369F5', soft:'rgba(106,77,239,.12)', ink:'#ffffff' },
+        blue:   { primary:'#3F6DF0', hover:'#5F89F5', soft:'rgba(63,109,240,.12)', ink:'#ffffff' },
+        teal:   { primary:'#0F9D8E', hover:'#2DB3A4', soft:'rgba(15,157,142,.12)', ink:'#ffffff' },
+        coral:  { primary:'#E8506A', hover:'#F06F85', soft:'rgba(232,80,106,.12)', ink:'#ffffff' },
+        amber:  { primary:'#E08A1E', hover:'#EBA043', soft:'rgba(224,138,30,.14)', ink:'#2b1400' }
+      },
+      cinema: {
+        gold:      { primary:'#C9A84E', hover:'#DDBA57', soft:'rgba(201,168,78,.14)',  ink:'#1a1508' },
+        champagne: { primary:'#E6D3A3', hover:'#F0E2BC', soft:'rgba(230,211,163,.14)', ink:'#1a1508' },
+        copper:    { primary:'#D9894A', hover:'#E8A06A', soft:'rgba(217,137,74,.16)',  ink:'#2b1400' },
+        ruby:      { primary:'#D64550', hover:'#E5636D', soft:'rgba(214,69,80,.16)',   ink:'#ffffff' },
+        ivory:     { primary:'#F2EEE4', hover:'#FFFFFF', soft:'rgba(242,238,228,.12)', ink:'#1a1508' }
+      }
     };
-    window.WT_ACCENTS = ACCENTS;
+    window.WT_ACCENTS_BY_THEME = ACCENTS_BY_THEME;
+    var curTheme = document.documentElement.getAttribute('data-theme') || 'night';
+    var ACCENTS = ACCENTS_BY_THEME[curTheme] || ACCENTS_BY_THEME.night;
+    window.WT_ACCENTS = ACCENTS; // акценты текущей темы
     var a = localStorage.getItem('wt_accent');
-    var preset = ACCENTS[a] || ACCENTS.gold;
+    var th = window.WT_THEMES[curTheme];
+    var preset = ACCENTS[a] || ACCENTS[th ? th.accent : 'violet'];
     var root = document.documentElement.style;
     root.setProperty('--primary', preset.primary);
     root.setProperty('--primary-hover', preset.hover);
@@ -40,7 +67,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-<meta name="theme-color" content="#09090B" />
+<meta name="theme-color" content="#0C0B17" />
 
 <!-- iOS: чтобы при добавлении на экран открывалось как отдельное приложение -->
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -49,7 +76,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&family=Baloo+2:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&family=Baloo+2:wght@700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app.css" />
 
 </head>
@@ -129,27 +156,39 @@
       </div>
     </div>
     <div class="room-topbar">
-      <div class="topbar-left">
-        <div class="topbar-titles">
-          <div class="room-name topbar-brand">Roomly<span class="topbar-brand-sub">: burado × otroverr</span></div>
-          <div class="room-id" id="roomBadge">комната</div>
-        </div>
+      <button type="button" class="icon-btn topbar-btn" onclick="toggleRoomMenu()" aria-label="Меню" id="roomMenuBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </button>
+      <div class="topbar-titles">
+        <div class="room-name topbar-brand">burado × otroverr</div>
+        <div class="room-id" id="roomBadge">комната</div>
       </div>
-      <div class="topbar-right">
-        <span class="sync-pill" id="syncPill" title="Статус синхронизации">
-          <span class="sync-dot" id="syncDot"></span><span id="syncLabel">Подключение…</span>
-        </span>
-        <button type="button" class="viewer-pill" id="viewerPillBtn" style="cursor:default" tabindex="-1">
-          <span class="live-dot"></span><span id="userCount">1 зритель</span>
-        </button>
-        <button class="icon-btn" onclick="openSettings()" aria-label="Настройки">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-        </button>
-      </div>
+      <button type="button" class="icon-btn topbar-btn" onclick="copyRoomCode()" aria-label="Скопировать код комнаты" title="Скопировать код комнаты">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 012-2h9"/></svg>
+      </button>
+    </div>
+
+    <div class="room-menu-backdrop" id="roomMenuBackdrop" onclick="closeRoomMenu()"></div>
+    <div class="room-menu" id="roomMenu">
+      <button type="button" class="upload-menu-item" onclick="closeRoomMenu(); openSettings();">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Настройки
+      </button>
+      <button type="button" class="upload-menu-item" onclick="closeRoomMenu(); openProfileEditor();">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Профиль
+      </button>
+      <button type="button" class="upload-menu-item" id="theaterMenuItem" onclick="closeRoomMenu(); toggleTheater();">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8"/></svg>
+        <span id="theaterMenuLabel">Большой экран</span>
+      </button>
     </div>
 
     <div class="room-body">
       <div class="video-section">
+        <span class="sync-pill" id="syncPill" title="Статус синхронизации">
+          <span class="sync-dot" id="syncDot"></span><span id="syncLabel">Подключение…</span>
+        </span>
         <div class="video-wrap" id="videoWrap">
           <button type="button" class="expand-btn ripple-host" id="expandBtn" onclick="toggleFullscreen()" aria-label="Развернуть видео" title="Развернуть видео" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/></svg>
@@ -235,9 +274,9 @@
         </div>
 
         <div class="stage-toolbar">
-          <button type="button" class="upload-pill ripple-host" onclick="toggleUploadMenu()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
-            Загрузить
+          <button type="button" class="upload-pill ripple-host" onclick="toggleUploadMenu()" aria-label="Добавить видео">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Видео
           </button>
           <div class="upload-menu-backdrop" id="uploadMenuBackdrop" onclick="closeUploadMenu()"></div>
           <div class="upload-menu" id="uploadMenu">
@@ -293,7 +332,12 @@
         <div class="video-resize-grip"></div>
       </div>
 
-      <div class="chat-section">
+      <div class="chat-section" id="chatSection">
+        <div class="sheet-tabs" role="tablist">
+          <button type="button" class="sheet-tab active" id="tabChat" role="tab" onclick="setSheetTab('chat')">Чат</button>
+          <button type="button" class="sheet-tab" id="viewerPillBtn" role="tab" onclick="setSheetTab('members')">Участники <span class="tab-badge" id="userCount">1</span></button>
+        </div>
+        <div class="members-panel" id="membersPanel"><div id="membersList"></div></div>
         <div class="chat-messages" id="chatMessages">
           <div class="chat-empty" id="chatEmpty">
             <svg class="chat-empty-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -364,20 +408,6 @@
       </div>
     </div>
 
-    <div class="bottom-nav">
-      <button class="nav-item active" id="navHome" onclick="setNav('home')">
-        <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span>
-        <span class="nav-label">Экран</span>
-      </button>
-      <button class="nav-item" id="navSettings" onclick="setNav('settings')">
-        <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
-        <span class="nav-label">Настройки</span>
-      </button>
-      <button class="nav-item" id="navProfile" onclick="setNav('profile')">
-        <span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
-        <span class="nav-label">Профиль</span>
-      </button>
-    </div>
   </div>
 </div>
 
@@ -400,8 +430,9 @@
     <div class="settings-row">
       <span class="label">Тема</span>
       <div class="theme-switch">
-        <button id="themeDarkBtn" onclick="setTheme('dark')">Тёмная</button>
-        <button id="themeLightBtn" onclick="setTheme('light')">Светлая</button>
+        <button data-theme-btn="night" onclick="setTheme('night')">Ночь</button>
+        <button data-theme-btn="light" onclick="setTheme('light')">Светлая</button>
+        <button data-theme-btn="cinema" onclick="setTheme('cinema')">Кинозал</button>
       </div>
     </div>
     <div class="settings-row" style="align-items:flex-start;">
