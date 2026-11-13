@@ -64,6 +64,8 @@ try {
     if (!Number.isNaN(parsed)) manualVideoRatio = parsed;
   }
 } catch (e) {}
+let roomUsers = []; // [{name, avatar, avatarPhoto}] — вкладка «Участники»
+let roomAllNames = []; // все участники комнаты (включая себя) — для вкладки «Участники»
 let roomMemberNames = []; // имена остальных участников комнаты, для @упоминаний
 let mentionQueryStart = -1; // индекс символа '@' в поле ввода, если сейчас набирается упоминание
 let audioCtx = null;
@@ -110,22 +112,23 @@ function sizeVideoWrap(appH) {
 
   const kbOpen = document.body.classList.contains('kb-open');
   const topbar = document.querySelector('.room-topbar');
-  const toolbar = document.querySelector('.stage-toolbar');
-  const nav = document.querySelector('.bottom-nav');
   const chatInputEl = document.querySelector('.chat-input');
 
   const topbarH = (!kbOpen && topbar) ? topbar.offsetHeight : 0;
-  const toolbarH = (!kbOpen && toolbar) ? toolbar.offsetHeight : 0;
-  // nav is hidden while the keyboard is open, so don't reserve space for it
-  const navH = (nav && getComputedStyle(nav).display !== 'none')
-    ? nav.getBoundingClientRect().height + 10 : 0; // + its own bottom margin
+  // Кнопка «Видео» теперь плавает поверх плеера и высоту не занимает.
+  const toolbarH = 0;
+  // Шапка листа чата: вкладки + «ручка» (скрыты при открытой клавиатуре)
+  const tabsEl = document.querySelector('.sheet-tabs');
+  const tabsH = (tabsEl && getComputedStyle(tabsEl).display !== 'none') ? tabsEl.offsetHeight + 8 : 0;
+  const sheetGap = 22; // ручка + отступ карточки видео
+  const navH = 0; // нижней панели больше нет
 
   const chatInputH = (kbOpen && chatInputEl) ? chatInputEl.offsetHeight : 64;
   // ~2 message rows worth of height (with a bit extra so a 3rd row peeks in
   // to signal the list scrolls), on top of the real input height
   const TWO_MSG_ROWS_H = 130;
 
-  const chatFloor = kbOpen ? (chatInputH + TWO_MSG_ROWS_H) : 150; // keeps chat comfortably usable, never crushed
+  const chatFloor = (kbOpen ? (chatInputH + TWO_MSG_ROWS_H) : 150) + tabsH + sheetGap; // keeps chat comfortably usable, never crushed
   const minH = kbOpen ? 90 : 160;
   const maxH = appH * (kbOpen ? 0.62 : 0.72);
 
@@ -539,8 +542,11 @@ function setupSocket() {
     document.getElementById('profileViewers').textContent = count;
   });
 
-  socket.on('room-users', ({ names }) => {
-    roomMemberNames = (names || []).filter((n) => n !== name);
+  socket.on('room-users', ({ names, users }) => {
+    roomAllNames = names || [];
+    roomUsers = Array.isArray(users) ? users : [];
+    roomMemberNames = roomAllNames.filter((n) => n !== name);
+    renderMembers();
   });
 
   socket.on('user-typing', ({ name: who }) => {
@@ -2331,17 +2337,55 @@ function openEmojiPicker() {
 /* -----------------------------------------------------------
    Bottom nav / theater mode / sheets
    ----------------------------------------------------------- */
-function setNav(which) {
-  const roomRoot = document.getElementById('roomRoot');
-  if (which === 'settings') { openSettings(); return; }
-  if (which === 'profile') { openProfileEditor(); return; }
-
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (which === 'home') {
-    document.getElementById('navHome').classList.add('active');
-    roomRoot.classList.toggle('theater-mode');
-    sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight);
-  }
+function setSheetTab(which) {
+  const sec = document.getElementById('chatSection');
+  if (!sec) return;
+  const members = which === 'members';
+  sec.classList.toggle('tab-members', members);
+  document.getElementById('tabChat').classList.toggle('active', !members);
+  document.getElementById('viewerPillBtn').classList.toggle('active', members);
+  if (members) renderMembers();
+}
+function renderMembers() {
+  const list = document.getElementById('membersList');
+  if (!list) return;
+  list.innerHTML = '';
+  // Сервер присылает users с аватарками; names — запасной вариант
+  let users = roomUsers.length ? roomUsers.slice() : roomAllNames.map((n) => ({ name: n, avatar: '', avatarPhoto: '' }));
+  if (!users.length && name) users.push({ name, avatar: avatarEmoji, avatarPhoto: '' });
+  users.sort((a, b) => (a.name === name ? -1 : b.name === name ? 1 : a.name.localeCompare(b.name)));
+  users.forEach((u) => {
+    const mine = u.name === name;
+    const row = document.createElement('div');
+    row.className = 'member-row';
+    const av = document.createElement('div');
+    av.className = 'msg-avatar member-avatar';
+    renderAvatarEl(av, u.name, mine ? avatarEmoji : (u.avatar || ''), mine ? avatarPhotoUrl(avatarPhoto) : (u.avatarPhoto || ''));
+    const nm = document.createElement('span');
+    nm.className = 'member-name';
+    nm.textContent = u.name + (mine ? ' (вы)' : '');
+    const dot = document.createElement('span');
+    dot.className = 'member-online';
+    dot.title = 'В сети';
+    row.append(av, nm, dot);
+    list.appendChild(row);
+  });
+}
+function toggleRoomMenu() {
+  const menu = document.getElementById('roomMenu');
+  const show = !menu.classList.contains('show');
+  menu.classList.toggle('show', show);
+  document.getElementById('roomMenuBackdrop').classList.toggle('show', show);
+}
+function closeRoomMenu() {
+  document.getElementById('roomMenu').classList.remove('show');
+  document.getElementById('roomMenuBackdrop').classList.remove('show');
+}
+function toggleTheater() {
+  const on = document.getElementById('roomRoot').classList.toggle('theater-mode');
+  const label = document.getElementById('theaterMenuLabel');
+  if (label) label.textContent = on ? 'Обычный экран' : 'Большой экран';
+  sizeVideoWrap(window.visualViewport ? window.visualViewport.height : window.innerHeight);
 }
 
 function toggleChatMoreMenu() {
@@ -2404,34 +2448,44 @@ function fallbackCopy(text) {
    Theme
    ----------------------------------------------------------- */
 function setTheme(t) {
-  if (t === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light');
-  } else {
-    document.documentElement.removeAttribute('data-theme');
-  }
-  try { localStorage.setItem('wt_theme', t); } catch (e) {}
+  const themes = window.WT_THEMES || {};
+  if (!themes[t]) t = 'night';
+  document.documentElement.setAttribute('data-theme', t);
+  window.WT_ACCENTS = (window.WT_ACCENTS_BY_THEME || {})[t] || window.WT_ACCENTS;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', themes[t].color);
+  try { localStorage.setItem('wt_theme', t); localStorage.removeItem('wt_accent'); } catch (e) {}
+  // Смена темы возвращает фирменный акцент этой темы
+  applyAccent(themes[t].accent);
   updateThemeButtons();
+  renderAccentSwatches();
+}
+function currentTheme() {
+  const t = document.documentElement.getAttribute('data-theme');
+  return (window.WT_THEMES || {})[t] ? t : 'night';
 }
 function updateThemeButtons() {
-  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  const darkBtn = document.getElementById('themeDarkBtn');
-  const lightBtn = document.getElementById('themeLightBtn');
-  if (!darkBtn || !lightBtn) return;
-  darkBtn.classList.toggle('active', !isLight);
-  lightBtn.classList.toggle('active', isLight);
+  const cur = currentTheme();
+  document.querySelectorAll('[data-theme-btn]').forEach((b) => {
+    b.classList.toggle('active', b.getAttribute('data-theme-btn') === cur);
+  });
 }
 
 /* -----------------------------------------------------------
    Accent color
    ----------------------------------------------------------- */
-function setAccent(id) {
+function applyAccent(id) {
   const preset = (window.WT_ACCENTS || {})[id];
-  if (!preset) return;
+  if (!preset) return false;
   const root = document.documentElement.style;
   root.setProperty('--primary', preset.primary);
   root.setProperty('--primary-hover', preset.hover);
   root.setProperty('--primary-soft', preset.soft);
   root.setProperty('--primary-ink', preset.ink);
+  return true;
+}
+function setAccent(id) {
+  if (!applyAccent(id)) return;
   try { localStorage.setItem('wt_accent', id); } catch (e) {}
   renderAccentSwatches();
 }
@@ -2439,8 +2493,8 @@ function renderAccentSwatches() {
   const wrap = document.getElementById('accentSwatches');
   if (!wrap) return;
   const accents = window.WT_ACCENTS || {};
-  let current = 'gold';
-  try { current = localStorage.getItem('wt_accent') || 'gold'; } catch (e) {}
+  let current = ((window.WT_THEMES || {})[currentTheme()] || {}).accent || 'violet';
+  try { const st = localStorage.getItem('wt_accent'); if (st && accents[st]) current = st; } catch (e) {}
   wrap.innerHTML = '';
   Object.keys(accents).forEach((id) => {
     const btn = document.createElement('button');
@@ -2723,6 +2777,7 @@ function leaveRoom() {
   document.getElementById('gate').style.display = 'flex';
   document.body.classList.remove('in-room');
   document.getElementById('roomRoot').classList.remove('theater-mode');
+  { const l = document.getElementById('theaterMenuLabel'); if (l) l.textContent = 'Большой экран'; }
   renderRecentRooms();
 }
 
