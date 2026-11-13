@@ -9,9 +9,12 @@ const webPush = require('web-push');
 const mediaStorage = require('./server/storage');
 const { extractMetadataFromFilename, lookupTmdb } = require('./server/metadata');
 const { probeVideo, generateThumbnail } = require('./server/thumbnails');
-const { addTimelineEvent } = require('./server/timeline');
+
+let compression = null;
+try { compression = require('compression'); } catch (e) { /* не установлен — работаем без gzip */ }
 
 const app = express();
+if (compression) app.use(compression({ filter: (req, res) => /^\/video\//.test(req.path) ? false : compression.filter(req, res) }));
 const server = http.createServer(app);
 const io = new Server(server);
 
@@ -104,11 +107,18 @@ const uploadVoice = multer({
   }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/chat-images', express.static(CHAT_IMAGE_DIR));
-app.use('/avatars', express.static(AVATAR_DIR));
-app.use('/voice-messages', express.static(VOICE_DIR));
-app.use('/thumbnails', express.static(THUMB_DIR));
+// html и sw.js не кэшируем жёстко (чтобы обновления доходили), остальное — на неделю
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '7d',
+  setHeaders: (res, filePath) => {
+    if (/\.(html|css|js)$|manifest\.json$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
+const UPLOAD_STATIC = { maxAge: '7d' };
+app.use('/chat-images', express.static(CHAT_IMAGE_DIR, UPLOAD_STATIC));
+app.use('/avatars', express.static(AVATAR_DIR, UPLOAD_STATIC));
+app.use('/voice-messages', express.static(VOICE_DIR, UPLOAD_STATIC));
+app.use('/thumbnails', express.static(THUMB_DIR, UPLOAD_STATIC));
 
 // --- Push-уведомления (Web Push), чтобы сообщения приходили даже с закрытым приложением ---
 // Ключи VAPID генерируются один раз и сохраняются рядом на диске — вручную
@@ -227,9 +237,9 @@ async function giphyRequest(res, endpoint, params) {
       id: item.id,
       title: item.title || '',
       preview: item.images?.fixed_width_small?.url || item.images?.fixed_width?.url || item.images?.original?.url,
-      url: item.images?.original?.url,
-      width: Number(item.images?.original?.width) || 200,
-      height: Number(item.images?.original?.height) || 200
+      url: item.images?.fixed_width?.url || item.images?.original?.url,
+      width: Number(item.images?.fixed_width?.width || item.images?.original?.width) || 200,
+      height: Number(item.images?.fixed_width?.height || item.images?.original?.height) || 200
     })).filter((g) => g.url);
     res.json({ results });
   } catch (err) {
@@ -523,8 +533,14 @@ app.get('/video/:filename', async (req, res) => {
   try {
     const result = await mediaStorage.getRangeStream(req.params.filename, req.headers.range, mediaRecords[req.params.filename]?.mimeType);
     if (!result) return res.status(404).send('Файл не найден');
+    if (result.invalidRange) {
+      res.writeHead(416, { 'Content-Range': `bytes */${result.fileSize}` });
+      return res.end();
+    }
     res.writeHead(result.statusCode, result.headers);
     result.stream.pipe(res);
+    // Плеер постоянно обрывает Range-запросы — без этого дескрипторы файлов утекают
+    res.on('close', () => { if (!result.stream.destroyed) result.stream.destroy(); });
     result.stream.on('error', (err) => {
       console.error('Ошибка стриминга видео:', err.message);
       if (!res.headersSent) res.status(500).end();
@@ -555,11 +571,8 @@ function createRoomState() {
     youtubeVideo: null,
     media: null, // текущая media-запись выбранного видео (см. mediaRecords)
     aiHistory: [],
-    ttt: null,
     members: new Map(),
     chatHistory: [],
-    timeline: [],
-    pinnedMessage: null,
     createdAt: Date.now()
   };
 }
@@ -713,33 +726,6 @@ function cleanupOldAvatars() {
 setInterval(cleanupOldAvatars, FILE_CLEANUP_INTERVAL_MS);
 cleanupOldAvatars();
 
-// --- Крестики-нолики ---
-const WIN_LINES = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8],
-  [0, 3, 6], [1, 4, 7], [2, 5, 8],
-  [0, 4, 8], [2, 4, 6]
-];
-
-function checkTttWinner(board) {
-  for (const [a, b, c] of WIN_LINES) {
-    if (board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
-  }
-  if (board.every((cell) => cell)) return 'draw';
-  return null;
-}
-
-function tttPublicState(game) {
-  if (!game) return null;
-  return {
-    board: game.board,
-    turn: game.turn,
-    winner: game.winner,
-    active: game.active,
-    names: { X: game.names.X || null, O: game.names.O || null },
-    playerCount: Object.keys(game.players).length
-  };
-}
-
 // Список отображаемых имён всех, кто сейчас в комнате (для автодополнения @упоминаний)
 function getRoomNames(room) {
   const members = rooms[room]?.members;
@@ -751,31 +737,6 @@ function getRoomNames(room) {
 
 function broadcastRoomUsers(room) {
   io.to(room).emit('room-users', { names: getRoomNames(room) });
-}
-
-// --- Presence (кто в комнате и что сейчас делает) ---
-// Изменения статуса (play/pause/chat/reconnect) могут приходить пачками —
-// например когда несколько участников почти одновременно жмут паузу.
-// Коалесцируем такие всплески в одну рассылку раз в ~400мс на комнату,
-// вместо события на каждое отдельное изменение.
-const presenceFlushTimers = {};
-function schedulePresenceBroadcast(room) {
-  if (presenceFlushTimers[room]) return;
-  presenceFlushTimers[room] = setTimeout(() => {
-    delete presenceFlushTimers[room];
-    const members = rooms[room]?.members;
-    if (!members) return;
-    const list = Array.from(members.values())
-      .map((m) => ({
-        clientId: m.clientId,
-        name: m.name,
-        avatar: m.avatar,
-        avatarPhoto: m.avatarPhoto ? ('/avatars/' + m.avatarPhoto) : '',
-        status: m.status || 'watching',
-        lastActivity: m.lastActivity || Date.now()
-      }));
-    io.to(room).emit('presence-update', list);
-  }, 400);
 }
 
 // Рассылает сообщение чата всей комнате и сохраняет его в скользящей истории
@@ -829,7 +790,6 @@ io.on('connection', (socket) => {
     }
     if (!rooms[room].members) rooms[room].members = new Map(); // на случай комнаты, созданной до обновления
     if (!rooms[room].chatHistory) rooms[room].chatHistory = [];
-    if (!rooms[room].timeline) rooms[room].timeline = [];
 
     // Если комната была запланирована к удалению (опустела), отменяем удаление —
     // кто-то вернулся
@@ -851,23 +811,17 @@ io.on('connection', (socket) => {
       externalVideo: rooms[room].externalVideo,
       youtubeVideo: rooms[room].youtubeVideo,
       media: rooms[room].media,
-      ttt: tttPublicState(rooms[room].ttt),
-      pinnedMessage: rooms[room].pinnedMessage,
-      timeline: rooms[room].timeline.slice(-40),
       chatHistory: rooms[room].chatHistory.map((m) => (
         m.id ? { ...m, reactions: rooms[room].reactions[m.id] || {} } : m
       ))
     });
 
-    const existingTttSymbol = rooms[room].ttt?.players?.[socket.id];
-    if (existingTttSymbol) socket.emit('ttt-you', { symbol: existingTttSymbol });
 
     // Если у этого clientId уже была запись — это либо переподключение после
     // обрыва (тогда есть leaveTimer, который надо отменить), либо просто
     // открытая вторая вкладка. В обоих случаях это не "новый человек" —
     // не объявляем повторное присоединение в чате.
     const existingMember = rooms[room].members.get(socket.data.clientId);
-    const wasReconnecting = !!existingMember?.leaveTimer;
     if (existingMember?.leaveTimer) {
       clearTimeout(existingMember.leaveTimer);
     }
@@ -887,14 +841,10 @@ io.on('connection', (socket) => {
         system: true,
         text: `${socket.data.name} присоединился(-ась)`
       });
-      addTimelineEvent(io, room, rooms[room], isNewRoom ? 'ROOM_CREATED' : 'USER_JOINED', socket.data.name, null);
-    } else if (wasReconnecting) {
-      addTimelineEvent(io, room, rooms[room], 'USER_RECONNECTED', socket.data.name, null);
     }
 
     io.to(room).emit('user-count', rooms[room].members.size);
     broadcastRoomUsers(room);
-    schedulePresenceBroadcast(room);
   });
 
   socket.on('select-video', ({ room, filename }) => {
@@ -909,7 +859,6 @@ io.on('connection', (socket) => {
     rooms[room].youtubeVideo = null;
     rooms[room].media = mediaRecords[filename] || null;
     io.to(room).emit('video-selected', { filename, media: rooms[room].media });
-    addTimelineEvent(io, room, rooms[room], 'VIDEO_SELECTED', socket.data.name, { title: rooms[room].media?.title || filename });
   });
 
   // Прямая ссылка на видеофайл (.mp4/.webm/.m3u8 и т.п.) с внешнего сервера.
@@ -929,7 +878,6 @@ io.on('connection', (socket) => {
     rooms[room].playbackUpdatedAt = Date.now();
     rooms[room].stateVersion++;
     io.to(room).emit('external-video-selected', { url: trimmed, from: socket.data.name || 'Гость' });
-    addTimelineEvent(io, room, rooms[room], 'VIDEO_CHANGED', socket.data.name, { kind: 'external' });
   });
 
   // Ссылка на YouTube. В отличие от set-stream-link, тут клиент подключает
@@ -952,7 +900,6 @@ io.on('connection', (socket) => {
     rooms[room].playbackUpdatedAt = Date.now();
     rooms[room].stateVersion++;
     io.to(room).emit('youtube-video-selected', { url: trimmed, from: socket.data.name || 'Гость' });
-    addTimelineEvent(io, room, rooms[room], 'VIDEO_CHANGED', socket.data.name, { kind: 'youtube' });
   });
 
   // Ссылка на трансляцию с другого сайта. Настоящую синхронизацию play/pause
@@ -972,7 +919,6 @@ io.on('connection', (socket) => {
     rooms[room].playbackUpdatedAt = Date.now();
     rooms[room].stateVersion++;
     io.to(room).emit('stream-link-updated', { url: trimmed, from: socket.data.name || 'Гость' });
-    addTimelineEvent(io, room, rooms[room], 'VIDEO_CHANGED', socket.data.name, { kind: 'stream' });
   });
 
   socket.on('play', ({ room, time }) => {
@@ -986,8 +932,6 @@ io.on('connection', (socket) => {
       rooms[room].members.get(socket.data.clientId).status = 'watching';
     }
     socket.to(room).emit('sync-play', { time, stateVersion: rooms[room].stateVersion, updatedAt: rooms[room].playbackUpdatedAt });
-    schedulePresenceBroadcast(room);
-    if (!wasPlaying) addTimelineEvent(io, room, rooms[room], 'VIDEO_STARTED', socket.data.name, null);
   });
 
   socket.on('pause', ({ room, time }) => {
@@ -1001,22 +945,14 @@ io.on('connection', (socket) => {
       rooms[room].members.get(socket.data.clientId).status = 'paused';
     }
     socket.to(room).emit('sync-pause', { time, stateVersion: rooms[room].stateVersion, updatedAt: rooms[room].playbackUpdatedAt });
-    schedulePresenceBroadcast(room);
-    if (wasPlaying) addTimelineEvent(io, room, rooms[room], 'VIDEO_PAUSED', socket.data.name, null);
   });
 
   socket.on('seek', ({ room, time }) => {
     if (!rooms[room]) return;
-    const previousTime = rooms[room].currentTime;
     rooms[room].currentTime = time;
     rooms[room].playbackUpdatedAt = Date.now();
     rooms[room].stateVersion++;
     socket.to(room).emit('sync-seek', { time, stateVersion: rooms[room].stateVersion, updatedAt: rooms[room].playbackUpdatedAt });
-    // В таймлайн попадают только заметные перемотки — иначе обычное
-    // "подвигать ползунок туда-сюда" завалило бы историю событий
-    if (Math.abs((time || 0) - (previousTime || 0)) > 10) {
-      addTimelineEvent(io, room, rooms[room], 'VIDEO_SEEKED', socket.data.name, null);
-    }
   });
 
   // Пользователь изменил имя и/или аватар в профиле, находясь в комнате
@@ -1049,7 +985,6 @@ io.on('connection', (socket) => {
     if (rooms[room]?.members?.has(socket.data.clientId)) {
       rooms[room].members.get(socket.data.clientId).status = 'chatting';
       rooms[room].members.get(socket.data.clientId).lastActivity = Date.now();
-      schedulePresenceBroadcast(room);
     }
     const trimmedText = (text || '').toString().trim().slice(0, 4000);
     // Картинка обязана быть именем файла, реально загруженным через /upload-image —
@@ -1187,119 +1122,12 @@ io.on('connection', (socket) => {
     if (!hadSameReaction) {
       if (!msgReactions[emoji]) msgReactions[emoji] = [];
       msgReactions[emoji].push(user);
-      addTimelineEvent(io, room, rooms[room], 'REACTION_SENT', user, { emoji });
     }
 
     io.to(room).emit('message-reaction-update', { messageId, reactions: msgReactions });
   });
 
-  // Закрепление сообщения (4.1) — любой участник может закрепить/открепить;
-  // комната по задумке приватная и небольшая (как и всё остальное в
-  // Roomly), поэтому отдельная роль "хоста" тут не требуется.
-  socket.on('chat-pin', ({ room, messageId, text, name }) => {
-    if (!room || !rooms[room] || !messageId) return;
-    rooms[room].pinnedMessage = {
-      id: String(messageId).slice(0, 100),
-      text: String(text || '').slice(0, 300),
-      name: String(name || 'Гость').slice(0, 100),
-      pinnedBy: socket.data.name || 'Гость',
-      pinnedAt: Date.now()
-    };
-    io.to(room).emit('chat-pinned', rooms[room].pinnedMessage);
-  });
-
-  socket.on('chat-unpin', ({ room }) => {
-    if (!room || !rooms[room]) return;
-    rooms[room].pinnedMessage = null;
-    io.to(room).emit('chat-pinned', null);
-  });
-
-  // Начать новую партию в крестики-нолики. Тот, кто нажал "Начать" — играет за X,
-  // второй игрок присоединяется явной кнопкой «Присоединиться» (ttt-join),
-  // а не случайным первым кликом по клетке — так с самого начала видно,
-  // кто в игре, а кто ещё нет.
-  socket.on('ttt-start', ({ room }) => {
-    if (!room || !rooms[room]) return;
-    const name = socket.data.name || 'Гость';
-    rooms[room].ttt = {
-      board: Array(9).fill(null),
-      turn: 'X',
-      players: { [socket.id]: 'X' },
-      names: { X: name, O: null },
-      winner: null,
-      active: true
-    };
-    socket.emit('ttt-you', { symbol: 'X' });
-    io.to(room).emit('ttt-state', tttPublicState(rooms[room].ttt));
-  });
-
-  // Явное присоединение второго (или заменяющего выбывшего) игрока
-  socket.on('ttt-join', ({ room }) => {
-    const game = rooms[room]?.ttt;
-    if (!game) return;
-    if (game.players[socket.id]) {
-      socket.emit('ttt-you', { symbol: game.players[socket.id] });
-      return;
-    }
-    if (Object.keys(game.players).length >= 2) return; // мест нет
-
-    const takenSymbols = Object.values(game.players);
-    const symbol = takenSymbols.includes('X') ? 'O' : 'X';
-    const name = socket.data.name || 'Гость';
-    game.players[socket.id] = symbol;
-    game.names[symbol] = name;
-    if (Object.keys(game.players).length === 2) game.active = true;
-
-    socket.emit('ttt-you', { symbol });
-    io.to(room).emit('ttt-state', tttPublicState(game));
-    io.to(room).emit('ttt-player-joined', { name, symbol });
-  });
-
-  socket.on('ttt-move', ({ room, index }) => {
-    const game = rooms[room]?.ttt;
-    const cellIndex = parseInt(index, 10);
-    if (!game || !game.active || game.winner) return;
-    if (!Number.isInteger(cellIndex) || cellIndex < 0 || cellIndex > 8) return;
-
-    const mySymbol = game.players[socket.id];
-    if (!mySymbol) return; // ещё не присоединился — сначала ttt-join
-    if (mySymbol !== game.turn) return; // не твой ход
-    if (game.board[cellIndex]) return; // клетка занята
-
-    game.board[cellIndex] = mySymbol;
-    const winner = checkTttWinner(game.board);
-    if (winner) {
-      game.winner = winner;
-      game.active = false;
-    } else {
-      game.turn = game.turn === 'X' ? 'O' : 'X';
-    }
-
-    io.to(room).emit('ttt-state', tttPublicState(game));
-  });
-
-  socket.on('ttt-reset', ({ room }) => {
-    const game = rooms[room]?.ttt;
-    if (!game) return;
-    game.board = Array(9).fill(null);
-    game.turn = 'X';
-    game.winner = null;
-    game.active = Object.keys(game.players).length === 2;
-    io.to(room).emit('ttt-state', tttPublicState(game));
-  });
-
   socket.on('disconnect', () => {
-    const game = rooms[currentRoom]?.ttt;
-    if (game && game.players[socket.id]) {
-      const leftSymbol = game.players[socket.id];
-      const leftName = game.names[leftSymbol];
-      delete game.players[socket.id];
-      game.names[leftSymbol] = null;
-      game.active = false; // ждём, пока кто-то присоединится вместо выбывшего
-      io.to(currentRoom).emit('ttt-state', tttPublicState(game));
-      io.to(currentRoom).emit('ttt-player-left', { name: leftName, symbol: leftSymbol });
-    }
-
     if (!currentRoom || !rooms[currentRoom]) return;
 
     const room = currentRoom;
@@ -1315,7 +1143,6 @@ io.on('connection', (socket) => {
     // это не то же самое, что окончательный уход, который объявляется только
     // если человек не вернётся за грейс-период ниже.
     member.status = 'reconnecting';
-    schedulePresenceBroadcast(room);
 
     // Не объявляем уход сразу: обрыв интернета или сворачивание вкладки на
     // телефоне почти всегда заканчивается автопереподключением socket.io
@@ -1328,11 +1155,9 @@ io.on('connection', (socket) => {
         system: true,
         text: `${member.name || 'Гость'} вышел(ла)`
       });
-      addTimelineEvent(io, room, rooms[room], 'USER_LEFT', member.name || 'Гость', null);
       const count = rooms[room].members.size;
       io.to(room).emit('user-count', count);
       broadcastRoomUsers(room);
-      schedulePresenceBroadcast(room);
 
       if (count === 0) {
         scheduleRoomCleanup(room);
