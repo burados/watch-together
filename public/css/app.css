@@ -1939,3 +1939,19 @@ html[data-theme="sand"] .video-wrap{ background:radial-gradient(circle at 50% 40
 }
 .stage-toolbar .upload-pill svg,
 .stage-toolbar .upload-pill:hover svg{ width:18px; height:18px; flex-shrink:0; }
+
+
+/* iPadOS 26: keep the room title below the native Liquid Glass status-bar blur.
+   iPad Home Screen web apps may report a zero safe-area inset, so use a
+   deliberate tablet-only clearance instead of relying on env(safe-area-inset-top). */
+@media screen and (min-width: 768px) and (max-width: 1366px) and (pointer: coarse) {
+  .room {
+    background: var(--bg);
+  }
+  .room-topbar {
+    padding-top: 42px; /* status-bar region + visual breathing room */
+    background: var(--bg);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
