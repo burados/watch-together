@@ -1904,3 +1904,38 @@ html[data-theme="sand"] .video-wrap{ background:radial-gradient(circle at 50% 40
   background:linear-gradient(135deg, var(--a) 52%, var(--b) 52%);
   box-shadow:inset 0 0 0 1px rgba(128,128,128,.35);
 }
+
+/* =============================================================
+   Оверлеи поверх видео — минимум места
+   «+ Видео» и «Включить звук» — маленькие круглые кнопки с иконкой,
+   статус синхронизации после 4 с сворачивается в иконку с точкой.
+   ============================================================= */
+.upload-pill{
+  width:36px; height:36px; padding:0; gap:0; justify-content:center;
+  border-radius:50%; opacity:.88;
+}
+.upload-pill .btn-label{ display:none; }
+.upload-pill svg{ width:18px; height:18px; }
+
+.yt-unmute-btn{
+  width:36px; height:36px; padding:0; gap:0; justify-content:center;
+  border-radius:50%; right:12px; bottom:58px; opacity:.9;
+}
+.yt-unmute-btn .btn-label{ display:none; }
+.yt-unmute-btn svg{ width:18px; height:18px; }
+
+.video-section > .sync-pill{ transition:padding .25s var(--ease), opacity .35s var(--ease); }
+.video-section > .sync-pill.compact{ padding:7px; gap:0; opacity:.85; }
+.video-section > .sync-pill.compact #syncLabel{ display:none !important; }
+
+.stream-frame-peek{ opacity:.75; }
+
+/* «+ Видео» внутри .stage-toolbar: круглая кнопка-иконка (перебивает более
+   специфичные правила выше), тень мягче, чтобы не светилась поверх кадра. */
+.stage-toolbar .upload-pill{
+  width:36px; height:36px; padding:0; gap:0; justify-content:center;
+  border-radius:50%;
+  box-shadow:0 3px 12px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+.stage-toolbar .upload-pill svg,
+.stage-toolbar .upload-pill:hover svg{ width:18px; height:18px; flex-shrink:0; }
