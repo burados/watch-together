@@ -760,10 +760,22 @@ function broadcastRoomUsers(room) {
 // комнаты — чтобы при случайном закрытии вкладки/приложения или обрыве связи
 // сообщения не терялись: новый или переподключившийся участник получает их
 // вместе с room-state (см. join-room).
+// Одинаковое системное сообщение («X присоединился(-ась)») не повторяем,
+// если такое же уже было среди последних сообщений недавно — иначе при
+// каждой перезагрузке страницы/долгом обрыве чат забивался дублями.
+const SYSTEM_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+const SYSTEM_DEDUPE_LOOKBACK = 6;
+
 function broadcastChatMessage(room, msg) {
   if (!rooms[room]) return;
   const stored = { ...msg, time: msg.time || Date.now() };
   if (!rooms[room].chatHistory) rooms[room].chatHistory = [];
+  if (stored.system) {
+    const recent = rooms[room].chatHistory.slice(-SYSTEM_DEDUPE_LOOKBACK);
+    const dup = recent.some((m) => m.system && m.text === stored.text
+      && (stored.time - (m.time || 0)) < SYSTEM_DEDUPE_WINDOW_MS);
+    if (dup) return;
+  }
   rooms[room].chatHistory.push(stored);
   if (rooms[room].chatHistory.length > CHAT_HISTORY_LIMIT) {
     rooms[room].chatHistory = rooms[room].chatHistory.slice(-CHAT_HISTORY_LIMIT);
