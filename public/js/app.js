@@ -2095,11 +2095,25 @@ function clearMediaCard() {
 let lastAuthoritativePlayback = { time: 0, playing: false, updatedAt: Date.now(), stateVersion: 0 };
 let connectionState = 'CONNECTED'; // CONNECTED | RECONNECTING | DISCONNECTED
 
+// Плашка статуса: при смене состояния показывает подпись 4 секунды,
+// затем сворачивается до маленькой иконки с цветной точкой (не мешает видео).
+let syncPillCompactTimer = null;
 function setSyncPill(stateClass, label) {
   const pill = document.getElementById('syncPill');
   if (!pill) return;
-  pill.className = 'sync-pill state-' + stateClass;
+  const changed = pill.dataset.state !== stateClass;
+  const keepCompact = !changed && pill.dataset.compact === '1';
+  pill.className = 'sync-pill state-' + stateClass + (keepCompact ? ' compact' : '');
   document.getElementById('syncLabel').textContent = label;
+  if (changed) {
+    pill.dataset.state = stateClass;
+    pill.dataset.compact = '0';
+    clearTimeout(syncPillCompactTimer);
+    syncPillCompactTimer = setTimeout(() => {
+      pill.dataset.compact = '1';
+      pill.classList.add('compact');
+    }, 4000);
+  }
 }
 
 function updateAuthoritativePlayback(time, playing, updatedAt, stateVersion) {
@@ -2179,10 +2193,16 @@ setInterval(() => {
   const sec = document.querySelector('.video-section');
   if (!sec) return;
   const pill = document.getElementById('syncPill');
-  const healthy = pill && /state-(synced|connected)\b/.test(pill.className);
+  // Скрываем оверлеи и при рассинхроне (статус остаётся иконкой-точкой),
+  // но не при обрыве связи/переподключении — там пользователю нужен статус.
+  const connOk = pill && !/state-(disconnected|reconnecting)\b/.test(pill.className);
   const menuOpen = document.getElementById('uploadMenu')?.classList.contains('show');
   const uploading = !!(document.getElementById('uploadProgress') || {}).textContent;
-  if (healthy && !menuOpen && !uploading && isVideoPlayingNow() && Date.now() - videoUiLastTouch > 4000) {
+  const pl = document.getElementById('player');
+  const hasVideo = !!currentYoutubeVideo || !!(pl && pl.style.display !== 'none' && (pl.currentSrc || pl.src));
+  const idleMs = Date.now() - videoUiLastTouch;
+  const idleEnough = isVideoPlayingNow() ? idleMs > 4000 : idleMs > 10000;
+  if (connOk && hasVideo && !menuOpen && !uploading && idleEnough) {
     sec.classList.add('ui-idle');
   } else {
     sec.classList.remove('ui-idle');
