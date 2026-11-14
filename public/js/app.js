@@ -663,6 +663,7 @@ function showStreamLink(url, from, notify) {
   bar.style.display = 'flex';
   document.getElementById('streamFrameFrom').textContent = from ? ('Добавил(а): ' + from) : '';
   document.getElementById('streamFramePeek').classList.remove('show');
+  autoCollapseFrameBar('stream', hideStreamFrameBar);
 
   document.getElementById('expandBtn').style.display = 'flex';
 
@@ -747,7 +748,20 @@ document.addEventListener('fullscreenchange', () => {
   setStreamBarHiddenForFullscreen(!!document.fullscreenElement);
 });
 
+// Панель над плеером («Открыть на YouTube» / «в новой вкладке») сама
+// сворачивается в маленькую кнопку через несколько секунд, чтобы не
+// закрывать картинку. Нажатие на кнопку возвращает панель.
+let frameBarTimers = {};
+function autoCollapseFrameBar(key, collapseFn, ms) {
+  clearTimeout(frameBarTimers[key]);
+  frameBarTimers[key] = setTimeout(collapseFn, ms || 5000);
+}
+function cancelFrameBarTimer(key) {
+  clearTimeout(frameBarTimers[key]);
+}
+
 function hideStreamFrameBar() {
+  cancelFrameBarTimer('stream');
   document.getElementById('streamFrameBar').style.display = 'none';
   document.getElementById('streamFramePeek').classList.add('show');
 }
@@ -755,9 +769,11 @@ function hideStreamFrameBar() {
 function showStreamFrameBar() {
   document.getElementById('streamFrameBar').style.display = 'flex';
   document.getElementById('streamFramePeek').classList.remove('show');
+  autoCollapseFrameBar('stream', hideStreamFrameBar);
 }
 
 function hideStreamFrame() {
+  cancelFrameBarTimer('stream');
   const frame = document.getElementById('streamFrame');
   frame.src = 'about:blank';
   frame.style.display = 'none';
@@ -797,6 +813,7 @@ function loadYoutubeApi(onReady) {
 }
 
 function hideYoutubeFrame() {
+  cancelFrameBarTimer('yt');
   document.getElementById('ytPlayer').style.display = 'none';
   document.getElementById('ytFrameBar').style.display = 'none';
   document.getElementById('ytFramePeek').classList.remove('show');
@@ -807,6 +824,7 @@ function hideYoutubeFrame() {
 }
 
 function hideYtFrameBar() {
+  cancelFrameBarTimer('yt');
   document.getElementById('ytFrameBar').style.display = 'none';
   document.getElementById('ytFramePeek').classList.add('show');
 }
@@ -814,6 +832,7 @@ function hideYtFrameBar() {
 function showYtFrameBar() {
   document.getElementById('ytFrameBar').style.display = 'flex';
   document.getElementById('ytFramePeek').classList.remove('show');
+  autoCollapseFrameBar('yt', hideYtFrameBar);
 }
 
 function openYoutubeLink() {
@@ -857,6 +876,7 @@ function showYoutubeVideo(url, from, notify) {
   bar.style.display = 'flex';
   document.getElementById('ytFrameFrom').textContent = from ? ('Добавил(а): ' + from) : '';
   document.getElementById('ytFramePeek').classList.remove('show');
+  autoCollapseFrameBar('yt', hideYtFrameBar);
 
   document.getElementById('expandBtn').style.display = 'flex';
 
@@ -1839,6 +1859,9 @@ function addChatMessage(msg, bulkLoad) {
   const wasNearBottom = bulkLoad ? true : isNearBottom(box);
 
   if (msg.system) {
+    // Тот же текст подряд (например, старая история с дублями «присоединился») — не рисуем повторно
+    const last = inner.lastElementChild;
+    if (last && last.classList.contains('msg') && last.classList.contains('system') && last.textContent === msg.text) return;
     const div = document.createElement('div');
     div.className = 'msg system';
     div.textContent = msg.text;
@@ -2104,6 +2127,99 @@ function getLocalPlayerTime() {
 // Раз в пару секунд сверяем локальное время плеера с расчётным
 // "авторитетным" временем сервера (время + сколько прошло с момента
 // последнего play/pause/seek) — без единого доп. запроса по сети.
+// Тап по плашке статуса: подтягиваем локальный плеер к расчётному
+// «авторитетному» времени комнаты (без запросов к серверу).
+function resyncNow() {
+  if (connectionState !== 'CONNECTED') { showToast('Нет связи с комнатой'); return; }
+  const a = lastAuthoritativePlayback;
+  const expected = a.playing ? a.time + (Date.now() - a.updatedAt) / 1000 : a.time;
+  setSyncPill('syncing', 'Синхронизация…');
+  try {
+    if (currentYoutubeVideo && ytPlayerInstance && typeof ytPlayerInstance.seekTo === 'function') {
+      ytPlayerInstance.seekTo(expected, true);
+      if (a.playing) ytPlayerInstance.playVideo(); else ytPlayerInstance.pauseVideo();
+    } else {
+      const pl = document.getElementById('player');
+      if (!pl || pl.style.display === 'none') { showToast('Видео не выбрано'); return; }
+      pl.currentTime = expected;
+      if (a.playing) pl.play().catch(() => {}); else pl.pause();
+    }
+    showToast('Пересинхронизировано');
+  } catch (e) {}
+}
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.id === 'syncPill') {
+    e.preventDefault(); resyncNow();
+  }
+});
+
+// Оверлеи поверх плеера («+ Видео», статус) прячутся, пока видео идёт и
+// никто ничего не трогает. Любое касание/движение/смена фокуса (в том
+// числе тап внутри YouTube-iframe — он уводит фокус окна) возвращает их.
+let videoUiLastTouch = Date.now();
+function wakeVideoUi() {
+  videoUiLastTouch = Date.now();
+  const sec = document.querySelector('.video-section');
+  if (sec) sec.classList.remove('ui-idle');
+}
+['pointerdown', 'touchstart', 'mousemove', 'keydown', 'wheel'].forEach((ev) => {
+  document.addEventListener(ev, wakeVideoUi, { passive: true, capture: true });
+});
+window.addEventListener('blur', wakeVideoUi);
+function isVideoPlayingNow() {
+  try {
+    if (currentYoutubeVideo && ytPlayerInstance && typeof ytPlayerInstance.getPlayerState === 'function') {
+      return ytPlayerInstance.getPlayerState() === 1;
+    }
+  } catch (e) {}
+  const pl = document.getElementById('player');
+  return !!(pl && pl.style.display !== 'none' && !pl.paused && !pl.ended);
+}
+setInterval(() => {
+  const sec = document.querySelector('.video-section');
+  if (!sec) return;
+  const pill = document.getElementById('syncPill');
+  const healthy = pill && /state-(synced|connected)\b/.test(pill.className);
+  const menuOpen = document.getElementById('uploadMenu')?.classList.contains('show');
+  const uploading = !!(document.getElementById('uploadProgress') || {}).textContent;
+  if (healthy && !menuOpen && !uploading && isVideoPlayingNow() && Date.now() - videoUiLastTouch > 4000) {
+    sec.classList.add('ui-idle');
+  } else {
+    sec.classList.remove('ui-idle');
+  }
+}, 1000);
+
+// Яркость экрана и тёплый тон: полупрозрачный слой поверх приложения
+// (значения хранятся локально на устройстве).
+function applyScreenComfort(dim, warm) {
+  const el = document.getElementById('screenComfort');
+  if (!el) return;
+  el.style.setProperty('--dim', String(dim / 100));
+  el.style.setProperty('--warm', String(warm / 100));
+  el.style.display = (dim > 0 || warm > 0) ? 'block' : 'none';
+}
+function setScreenComfort() {
+  const d = parseInt(document.getElementById('dimSlider').value, 10) || 0;
+  const w = parseInt(document.getElementById('warmSlider').value, 10) || 0;
+  applyScreenComfort(d, w);
+  try { localStorage.setItem('wt_dim', String(d)); localStorage.setItem('wt_warm', String(w)); } catch (e) {}
+}
+(function initScreenComfort() {
+  let d = 0, w = 0;
+  try {
+    d = Math.min(60, Math.max(0, parseInt(localStorage.getItem('wt_dim'), 10) || 0));
+    w = Math.min(40, Math.max(0, parseInt(localStorage.getItem('wt_warm'), 10) || 0));
+  } catch (e) {}
+  const apply = () => {
+    const ds = document.getElementById('dimSlider');
+    const ws = document.getElementById('warmSlider');
+    if (ds) ds.value = d;
+    if (ws) ws.value = w;
+    applyScreenComfort(d, w);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', apply); else apply();
+})();
+
 setInterval(() => {
   if (connectionState !== 'CONNECTED') return;
   if (syncing) { setSyncPill('syncing', 'Синхронизация…'); return; }
@@ -2705,6 +2821,11 @@ function triggerEmojiBurst(bodyEl, emoji) {
   burst.textContent = emoji || '❤️';
   bodyEl.appendChild(burst);
   burst.addEventListener('animationend', () => burst.remove());
+  // Мягкая пульсация самого пузыря (перезапускаем при повторном тапе)
+  bodyEl.classList.remove('msg-pulse');
+  void bodyEl.offsetWidth;
+  bodyEl.classList.add('msg-pulse');
+  setTimeout(() => bodyEl.classList.remove('msg-pulse'), 750);
 }
 // Оставлено для обратной совместимости — сердце было единственной реакцией с анимацией
 function triggerHeartBurst(bodyEl) { triggerEmojiBurst(bodyEl, '❤️'); }
