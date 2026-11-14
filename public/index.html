@@ -290,9 +290,9 @@
                этим плеером можно управлять программно: play/pause/seek —
                и события транслируются остальным зрителям как настоящая синхронизация. -->
           <div id="ytPlayer" class="yt-player" style="display:none;"></div>
-          <button type="button" class="yt-unmute-btn" id="ytUnmuteBtn" onclick="unmuteYoutube()">
+          <button type="button" class="yt-unmute-btn" id="ytUnmuteBtn" onclick="unmuteYoutube()" aria-label="Включить звук" title="Включить звук">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M23 9l-6 6M17 9l6 6"/></svg>
-            Включить звук
+            <span class="btn-label">Включить звук</span>
           </button>
           <div class="stream-frame-bar" id="ytFrameBar" style="display:none;">
             <span id="ytFrameFrom"></span>
@@ -316,7 +316,7 @@
         <div class="stage-toolbar">
           <button type="button" class="upload-pill ripple-host" onclick="toggleUploadMenu()" aria-label="Добавить видео">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            Видео
+            <span class="btn-label">Видео</span>
           </button>
           <div class="upload-menu-backdrop" id="uploadMenuBackdrop" onclick="closeUploadMenu()"></div>
           <div class="upload-menu" id="uploadMenu">
