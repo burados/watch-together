@@ -1066,18 +1066,24 @@ select{
 .msg-time{ display:inline-block; margin-left:6px; font-size:10.5px; color:var(--text-faint); white-space:nowrap; }
 
 /* Двойной тап / реакция — эмодзи вылетает и растворяется */
+/* Двойной тап по сообщению: мягкая пульсация пузыря + маленькое сердечко,
+   которое плавно всплывает и растворяется (без «прыжка» и крупного смайла). */
 .msg-heart-burst{
-  position:absolute; top:50%; left:50%; z-index:15;
-  transform:translate(-50%,-50%) scale(0);
-  font-size:52px; pointer-events:none;
-  filter:drop-shadow(0 4px 14px rgba(0,0,0,.35));
-  animation:heart-burst .7s var(--ease-spring) forwards;
+  position:absolute; left:50%; top:35%; z-index:15;
+  font-size:24px; line-height:1; pointer-events:none; opacity:0;
+  transform:translate(-50%,8px) scale(.75);
+  animation:heart-float 1.15s cubic-bezier(.22,1,.36,1) forwards;
 }
-@keyframes heart-burst{
-  0%{ transform:translate(-50%,-50%) scale(0); opacity:0; }
-  25%{ transform:translate(-50%,-50%) scale(1.15); opacity:1; }
-  45%{ transform:translate(-50%,-50%) scale(.95); opacity:1; }
-  100%{ transform:translate(-50%,-58%) scale(1.05); opacity:0; }
+@keyframes heart-float{
+  0%{ opacity:0; transform:translate(-50%,8px) scale(.75); }
+  22%{ opacity:.95; transform:translate(-50%,-2px) scale(1); }
+  100%{ opacity:0; transform:translate(-50%,-38px) scale(1); }
+}
+.msg-body.msg-pulse{ animation:msg-soft-pulse .7s ease-out; }
+@keyframes msg-soft-pulse{
+  0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--primary) 38%, transparent); transform:scale(1); }
+  35%{ transform:scale(1.025); }
+  100%{ box-shadow:0 0 0 10px color-mix(in srgb, var(--primary) 0%, transparent); transform:scale(1); }
 }
 
 /* Реакция появляется с лёгким "отскоком" */
@@ -1685,4 +1691,216 @@ body.kb-open .sheet-tabs{ display:none; }
 @media (max-width:420px){
   .video-section > .sync-pill{ max-width:calc(100% - 140px); overflow:hidden; }
   .video-section > .sync-pill #syncLabel{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+}
+
+/* ===== Верхние оверлеи плеера: без наложения =====
+   Ряд 1 (top:12px): слева статус синхронизации, справа «+ Видео».
+   Ряд 2 (top:60px): компактная панель «Открыть на YouTube» — справа,
+   чтобы не лезть под «Рассинхрон» и «+ Видео». Подпись «Добавил(а)»
+   в панели скрыта (она растягивала панель на всю ширину плеера);
+   сама панель автоматически сворачивается в маленькую кнопку. */
+.stream-frame-bar{
+  top:60px; right:12px; left:auto;
+  max-width:calc(100% - 24px);
+  gap:6px; padding:4px 5px 4px 4px;
+  border-radius:var(--radius-full, 999px);
+}
+.stream-frame-bar span{ display:none; }
+.stream-frame-bar button{
+  font-size:11.5px; padding:5px 10px; border-radius:var(--radius-full, 999px);
+  white-space:nowrap;
+}
+.stream-frame-bar .stream-frame-bar-close{
+  width:24px; height:24px; border-radius:50%;
+}
+.stream-frame-peek{
+  top:60px; right:12px; width:28px; height:28px; border-radius:50%;
+}
+
+/* =============================================================
+   Приглушённая палитра: «приземлённые» цвета, меньше яркости и белизны.
+   Акценты тем заданы в index.html (ACCENTS_BY_THEME); здесь — фоны,
+   текст, статусные цвета и подсветки.
+   ============================================================= */
+:root{
+  --bg-glow-a: rgba(123,109,196,.10);
+  --bg-glow-b: rgba(94,130,196,.05);
+  --success:#56AE86;
+  --success-soft: rgba(86,174,134,.14);
+  --danger:#CC6479;
+  --danger-soft: rgba(204,100,121,.14);
+  --text:#E8E6EE;
+  --text-secondary:#A9A9B4;
+  --text-faint:#6B6B76;
+}
+html[data-theme="light"]{
+  --bg:#EDEAE4;
+  --bg-glow-a: rgba(95,81,179,.07);
+  --bg-glow-b: rgba(74,111,187,.05);
+  --card:#F6F4EF;
+  --surface:#F6F4EF;
+  --surface-2:#E3DFD7;
+  --border: rgba(45,36,20,.10);
+  --border-soft: rgba(45,36,20,.06);
+  --border-strong: rgba(45,36,20,.18);
+  --text:#26232D;
+  --text-secondary:#585466;
+  --text-faint:#8D8A99;
+  --shadow-sm: 0 4px 14px rgba(45,36,20,.08);
+  --shadow-md: 0 16px 44px rgba(45,36,20,.12);
+  --shadow-lg: 0 28px 70px rgba(45,36,20,.18);
+}
+html[data-theme="light"] .msg-react-picker{ background:rgba(246,244,239,.96); }
+html[data-theme="cinema"]{
+  --bg-glow-a: rgba(181,152,82,.09);
+  --bg-glow-b: rgba(181,152,82,.04);
+  --text:#EDE7D8;
+  --text-secondary:#B3AD9D;
+  --text-faint:#726C5D;
+}
+
+/* ===== Вкладки «Чат / Участники»: компактнее ===== */
+.sheet-tabs{ padding:3px; gap:3px; margin:0 14px 6px; }
+.sheet-tab{ padding:7px 10px; gap:7px; font-size:13.5px; font-weight:700; }
+.tab-badge{ min-width:18px; padding:1px 6px; font-size:11.5px; font-weight:700; }
+@media (min-width:900px){ .sheet-tabs{ margin:10px 14px 4px; } }
+
+/* ===== Свечение сообщений не обрезается =====
+   Тень пузыря выходила за край прокручиваемого списка и резалась ровной
+   (квадратной) линией — особенно у нижнего сообщения. Даём списку запас
+   под тень, делаем тени мягче и компактнее, а края скролла — с плавным
+   затуханием вместо жёсткого среза. */
+.chat-messages{
+  padding:16px 18px 24px;
+  contain:layout;
+  -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+  mask-image:linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 20px), transparent 100%);
+}
+.msg-row.own .msg-body{
+  box-shadow:0 3px 10px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.msg-row.ai-msg .msg-body{
+  background:linear-gradient(135deg, color-mix(in srgb, var(--primary) 14%, transparent), color-mix(in srgb, var(--primary) 5%, transparent));
+  border-color:color-mix(in srgb, var(--primary) 28%, transparent);
+  animation:ai-glow-soft 3.2s ease-in-out infinite;
+}
+@keyframes ai-glow-soft{
+  0%,100%{ box-shadow:0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent), 0 2px 8px color-mix(in srgb, var(--primary) 8%, transparent); }
+  50%{ box-shadow:0 0 0 1px color-mix(in srgb, var(--primary) 38%, transparent), 0 3px 12px color-mix(in srgb, var(--primary) 20%, transparent); }
+}
+.msg-row.ai-msg .msg-name{ color:var(--primary); }
+.msg-row.ai-msg .msg-avatar{ background:linear-gradient(135deg, var(--primary), var(--primary-hover)); }
+
+/* ===== Кнопка «Включить звук»: компактная, не закрывает субтитры ===== */
+.yt-unmute-btn{
+  left:auto; right:12px; bottom:58px; transform:none;
+  padding:7px 12px; gap:6px; font-size:12px;
+}
+.yt-unmute-btn svg{ width:15px; height:15px; }
+.video-wrap:fullscreen .yt-unmute-btn{ bottom:70px; }
+
+/* ===== Плашка статуса — нажимаемая («пересинхронизировать») ===== */
+.video-section > .sync-pill{ cursor:pointer; -webkit-user-select:none; user-select:none; }
+.video-section > .sync-pill:active{ transform:scale(.96); }
+
+/* ===== Автоскрытие оверлеев поверх идущего видео ===== */
+.video-section > .sync-pill,
+.stage-toolbar,
+.stream-frame-bar,
+.stream-frame-peek,
+.yt-unmute-btn{
+  transition:opacity .35s var(--ease);
+}
+.video-section.ui-idle > .sync-pill,
+.video-section.ui-idle .stage-toolbar,
+.video-section.ui-idle .stream-frame-bar,
+.video-section.ui-idle .stream-frame-peek{
+  opacity:0; pointer-events:none;
+}
+/* Пока оверлеи скрыты, верхняя полоса ловит тап и возвращает их
+   (тапы внутри YouTube-iframe иначе до страницы не доходят). */
+.video-section.ui-idle::after{
+  content:''; position:absolute; top:0; left:0; right:0; height:64px; z-index:7;
+}
+
+/* ===== Яркость экрана / тёплый тон ===== */
+.screen-comfort{
+  display:none; position:fixed; inset:0; z-index:2147483000; pointer-events:none;
+  background:
+    linear-gradient(rgba(0,0,0,var(--dim,0)), rgba(0,0,0,var(--dim,0))),
+    linear-gradient(rgba(255,150,60,var(--warm,0)), rgba(255,150,60,var(--warm,0)));
+}
+.settings-slider-row{ gap:14px; }
+.settings-slider{
+  flex:1; min-width:0; max-width:190px; height:4px; -webkit-appearance:none; appearance:none;
+  background:var(--surface-2); border-radius:99px; outline:none;
+}
+.settings-slider::-webkit-slider-thumb{
+  -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
+  background:var(--primary); border:0; box-shadow:0 1px 6px rgba(0,0,0,.35);
+}
+.settings-slider::-moz-range-thumb{
+  width:20px; height:20px; border-radius:50%; background:var(--primary); border:0;
+}
+
+/* =============================================================
+   Новые темы: Лес, Океан, Закат, Графит (тёмные), Песок (светлая).
+   Акценты — в index.html (ACCENTS_BY_THEME). Все цвета приглушённые.
+   ============================================================= */
+html[data-theme="forest"]{
+  --bg:#0D120F; --bg-glow-a: rgba(84,140,100,.10); --bg-glow-b: rgba(150,170,90,.05);
+  --card:#131B16; --surface:#19231D; --surface-2:#212D26;
+  --border: rgba(220,240,225,.09); --border-soft: rgba(220,240,225,.05); --border-strong: rgba(220,240,225,.16);
+  --text:#E4EAE3; --text-secondary:#A5B2A8; --text-faint:#67736B;
+}
+html[data-theme="ocean"]{
+  --bg:#0A1117; --bg-glow-a: rgba(70,130,170,.11); --bg-glow-b: rgba(70,160,160,.05);
+  --card:#101A22; --surface:#162330; --surface-2:#1E2F3E;
+  --border: rgba(210,230,245,.09); --border-soft: rgba(210,230,245,.05); --border-strong: rgba(210,230,245,.16);
+  --text:#E2E9EF; --text-secondary:#A3B0BC; --text-faint:#66737F;
+}
+html[data-theme="dusk"]{
+  --bg:#130E10; --bg-glow-a: rgba(190,110,85,.10); --bg-glow-b: rgba(150,100,150,.05);
+  --card:#1B1417; --surface:#241A1E; --surface-2:#2F2227;
+  --border: rgba(245,225,215,.09); --border-soft: rgba(245,225,215,.05); --border-strong: rgba(245,225,215,.16);
+  --text:#EEE4E0; --text-secondary:#B5A7A2; --text-faint:#75675F;
+}
+html[data-theme="graphite"]{
+  --bg:#101113; --bg-glow-a: rgba(140,150,170,.07); --bg-glow-b: rgba(140,150,170,.03);
+  --card:#17181B; --surface:#1E2023; --surface-2:#282A2E;
+  --border: rgba(255,255,255,.08); --border-soft: rgba(255,255,255,.05); --border-strong: rgba(255,255,255,.14);
+  --text:#E6E6E8; --text-secondary:#A8A9AF; --text-faint:#686A70;
+}
+html[data-theme="sand"]{
+  --bg:#E9E2D6; --bg-glow-a: rgba(181,87,63,.06); --bg-glow-b: rgba(63,116,135,.05);
+  --card:#F3EEE5; --surface:#F3EEE5; --surface-2:#DDD5C6;
+  --border: rgba(60,45,25,.11); --border-soft: rgba(60,45,25,.06); --border-strong: rgba(60,45,25,.20);
+  --text:#2A2520; --text-secondary:#5E564A; --text-faint:#8E8575;
+  --shadow-sm: 0 4px 14px rgba(60,45,25,.09);
+  --shadow-md: 0 16px 44px rgba(60,45,25,.13);
+  --shadow-lg: 0 28px 70px rgba(60,45,25,.19);
+}
+html[data-theme="sand"] .msg-react-picker{ background:rgba(243,238,229,.96); }
+html[data-theme="forest"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #12201a, #060a08 75%); }
+html[data-theme="ocean"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #0f1f2b, #05090d 75%); }
+html[data-theme="dusk"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #251518, #0a0607 75%); }
+html[data-theme="graphite"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #1c1e22, #08090a 75%); }
+html[data-theme="sand"] .video-wrap{ background:radial-gradient(circle at 50% 40%, #2a241d, #0e0c09 75%); }
+
+/* ===== Выбор темы: сетка карточек ===== */
+.settings-theme-row{ flex-direction:column; align-items:stretch; gap:10px; }
+.theme-grid{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
+.theme-grid button{
+  display:flex; align-items:center; gap:9px; padding:9px 12px;
+  border-radius:14px; border:1px solid var(--border); background:var(--surface-2);
+  font-size:13px; font-weight:700; color:var(--text-secondary); text-align:left;
+  transition:background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
+}
+.theme-grid button.active{
+  background:var(--primary-soft); border-color:var(--primary); color:var(--text);
+}
+.theme-dot{
+  flex-shrink:0; width:20px; height:20px; border-radius:50%; display:block;
+  background:linear-gradient(135deg, var(--a) 52%, var(--b) 52%);
+  box-shadow:inset 0 0 0 1px rgba(128,128,128,.35);
 }
