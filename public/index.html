@@ -9,8 +9,13 @@
   try {
     var THEMES = {
       night:  { name:'Ночь',    accent:'violet', color:'#0C0B17' },
-      light:  { name:'Светлая', accent:'violet', color:'#F4F2FF' },
-      cinema: { name:'Кинозал', accent:'gold',   color:'#080808' }
+      light:  { name:'Светлая', accent:'violet', color:'#EDEAE4' },
+      cinema: { name:'Кинозал', accent:'gold',   color:'#080808' },
+      forest: { name:'Лес',      accent:'moss',    color:'#0D120F' },
+      ocean:  { name:'Океан',    accent:'steel',   color:'#0A1117' },
+      dusk:   { name:'Закат',    accent:'terra',   color:'#130E10' },
+      graphite:{ name:'Графит',  accent:'slate',   color:'#101113' },
+      sand:   { name:'Песок',    accent:'clay',    color:'#E9E2D6' }
     };
     window.WT_THEMES = THEMES;
     var t = localStorage.getItem('wt_theme');
@@ -25,25 +30,60 @@
     // У каждой темы свой набор акцентов, подобранный под её фон
     var ACCENTS_BY_THEME = {
       night: {
-        violet: { primary:'#7C5CFF', hover:'#9B82FF', soft:'rgba(124,92,255,.16)', ink:'#ffffff' },
-        blue:   { primary:'#5B8CFF', hover:'#7DA3FF', soft:'rgba(91,140,255,.16)', ink:'#ffffff' },
-        cyan:   { primary:'#38D6E0', hover:'#5FE4EC', soft:'rgba(56,214,224,.16)', ink:'#002a2d' },
-        mint:   { primary:'#42D392', hover:'#5FE0A8', soft:'rgba(66,211,146,.16)', ink:'#06231a' },
-        pink:   { primary:'#FF6FB0', hover:'#FF8FC2', soft:'rgba(255,111,176,.16)', ink:'#2b0018' }
+        violet: { primary:'#7B6DC4', hover:'#9488D2', soft:'rgba(123,109,196,.16)', ink:'#ffffff' },
+        blue:   { primary:'#5E82C4', hover:'#7B9AD2', soft:'rgba(94,130,196,.16)', ink:'#ffffff' },
+        cyan:   { primary:'#4AA3AB', hover:'#69B7BE', soft:'rgba(74,163,171,.16)', ink:'#06242a' },
+        mint:   { primary:'#54A682', hover:'#70BA9A', soft:'rgba(84,166,130,.16)', ink:'#06231a' },
+        pink:   { primary:'#C57A9F', hover:'#D293B3', soft:'rgba(197,122,159,.16)', ink:'#2b0f1f' }
       },
       light: {
-        violet: { primary:'#6A4DEF', hover:'#8369F5', soft:'rgba(106,77,239,.12)', ink:'#ffffff' },
-        blue:   { primary:'#3F6DF0', hover:'#5F89F5', soft:'rgba(63,109,240,.12)', ink:'#ffffff' },
-        teal:   { primary:'#0F9D8E', hover:'#2DB3A4', soft:'rgba(15,157,142,.12)', ink:'#ffffff' },
-        coral:  { primary:'#E8506A', hover:'#F06F85', soft:'rgba(232,80,106,.12)', ink:'#ffffff' },
-        amber:  { primary:'#E08A1E', hover:'#EBA043', soft:'rgba(224,138,30,.14)', ink:'#2b1400' }
+        violet: { primary:'#5F51B3', hover:'#7669C4', soft:'rgba(95,81,179,.12)', ink:'#ffffff' },
+        blue:   { primary:'#4A6FBB', hover:'#6485CB', soft:'rgba(74,111,187,.12)', ink:'#ffffff' },
+        teal:   { primary:'#2E877C', hover:'#47998F', soft:'rgba(46,135,124,.12)', ink:'#ffffff' },
+        coral:  { primary:'#BF5A69', hover:'#CC7482', soft:'rgba(191,90,105,.12)', ink:'#ffffff' },
+        amber:  { primary:'#B27A32', hover:'#C18E4B', soft:'rgba(178,122,50,.14)', ink:'#241203' }
       },
       cinema: {
-        gold:      { primary:'#C9A84E', hover:'#DDBA57', soft:'rgba(201,168,78,.14)',  ink:'#1a1508' },
-        champagne: { primary:'#E6D3A3', hover:'#F0E2BC', soft:'rgba(230,211,163,.14)', ink:'#1a1508' },
-        copper:    { primary:'#D9894A', hover:'#E8A06A', soft:'rgba(217,137,74,.16)',  ink:'#2b1400' },
-        ruby:      { primary:'#D64550', hover:'#E5636D', soft:'rgba(214,69,80,.16)',   ink:'#ffffff' },
-        ivory:     { primary:'#F2EEE4', hover:'#FFFFFF', soft:'rgba(242,238,228,.12)', ink:'#1a1508' }
+        gold:      { primary:'#B59852', hover:'#C6AB65', soft:'rgba(181,152,82,.14)',  ink:'#1a1508' },
+        champagne: { primary:'#CFC09B', hover:'#DACDAF', soft:'rgba(207,192,155,.14)', ink:'#1a1508' },
+        copper:    { primary:'#BC7F50', hover:'#CB9569', soft:'rgba(188,127,80,.16)',  ink:'#241203' },
+        ruby:      { primary:'#B04A55', hover:'#C16670', soft:'rgba(176,74,85,.16)',   ink:'#ffffff' },
+        ivory:     { primary:'#DCD8CE', hover:'#E8E4DA', soft:'rgba(220,216,206,.12)', ink:'#1a1508' }
+      },
+      forest: {
+        moss:  { primary:'#6E9A6B', hover:'#86AD82', soft:'rgba(110,154,107,.16)', ink:'#08170b' },
+        sage:  { primary:'#93A98A', hover:'#A8BAA0', soft:'rgba(147,169,138,.16)', ink:'#0e170c' },
+        olive: { primary:'#A0A058', hover:'#B2B270', soft:'rgba(160,160,88,.16)',  ink:'#1a1a05' },
+        clay:  { primary:'#B87B5A', hover:'#C6906F', soft:'rgba(184,123,90,.16)',  ink:'#241206' },
+        mist:  { primary:'#5E9A96', hover:'#78ADA9', soft:'rgba(94,154,150,.16)',  ink:'#06201f' }
+      },
+      ocean: {
+        steel:   { primary:'#5F8FB8', hover:'#7BA3C6', soft:'rgba(95,143,184,.16)',  ink:'#06182a' },
+        teal:    { primary:'#4A9A9E', hover:'#66ADB0', soft:'rgba(74,154,158,.16)',  ink:'#041f21' },
+        seafoam: { primary:'#6FAE96', hover:'#88BEA9', soft:'rgba(111,174,150,.16)', ink:'#06231a' },
+        sand:    { primary:'#C2A878', hover:'#CFBA92', soft:'rgba(194,168,120,.16)', ink:'#241a06' },
+        coral:   { primary:'#C7796B', hover:'#D3917F', soft:'rgba(199,121,107,.16)', ink:'#2a0f0a' }
+      },
+      dusk: {
+        terra: { primary:'#C2745A', hover:'#CF8B73', soft:'rgba(194,116,90,.16)',  ink:'#2a0e06' },
+        rose:  { primary:'#B9707F', hover:'#C88792', soft:'rgba(185,112,127,.16)', ink:'#2a0a12' },
+        amber: { primary:'#C49A55', hover:'#D0AB6E', soft:'rgba(196,154,85,.16)',  ink:'#241804' },
+        plum:  { primary:'#9A7AA8', hover:'#AB90B7', soft:'rgba(154,122,168,.16)', ink:'#1c0b24' },
+        sand:  { primary:'#CDB79A', hover:'#D8C6AE', soft:'rgba(205,183,154,.14)', ink:'#241a0a' }
+      },
+      graphite: {
+        slate:  { primary:'#8A93A6', hover:'#A0A8B8', soft:'rgba(138,147,166,.16)', ink:'#0c0f16' },
+        silver: { primary:'#B4B8C0', hover:'#C6C9CF', soft:'rgba(180,184,192,.14)', ink:'#111318' },
+        blue:   { primary:'#6F8DB0', hover:'#86A0BE', soft:'rgba(111,141,176,.16)', ink:'#07131f' },
+        sage:   { primary:'#86A08D', hover:'#9CB3A2', soft:'rgba(134,160,141,.16)', ink:'#0a1810' },
+        amber:  { primary:'#B9985E', hover:'#C7AA76', soft:'rgba(185,152,94,.16)',  ink:'#241804' }
+      },
+      sand: {
+        clay:  { primary:'#B5573F', hover:'#C46C55', soft:'rgba(181,87,63,.12)',  ink:'#ffffff' },
+        olive: { primary:'#6F7A3A', hover:'#838E4F', soft:'rgba(111,122,58,.13)', ink:'#ffffff' },
+        ocean: { primary:'#3F7487', hover:'#568A9C', soft:'rgba(63,116,135,.12)', ink:'#ffffff' },
+        plum:  { primary:'#85526F', hover:'#996887', soft:'rgba(133,82,111,.12)', ink:'#ffffff' },
+        ink:   { primary:'#3E3A36', hover:'#57524D', soft:'rgba(62,58,54,.10)',   ink:'#ffffff' }
       }
     };
     window.WT_ACCENTS_BY_THEME = ACCENTS_BY_THEME;
@@ -186,7 +226,7 @@
 
     <div class="room-body">
       <div class="video-section">
-        <span class="sync-pill" id="syncPill" title="Статус синхронизации">
+        <span class="sync-pill" id="syncPill" title="Нажмите, чтобы пересинхронизировать" role="button" tabindex="0" onclick="resyncNow()">
           <span class="sync-dot" id="syncDot"></span><span id="syncLabel">Подключение…</span>
         </span>
         <div class="video-wrap" id="videoWrap">
@@ -427,17 +467,30 @@
       <span class="label">Зрителей онлайн</span>
       <span class="value" id="settingsViewers">1</span>
     </div>
-    <div class="settings-row">
+    <div class="settings-row settings-theme-row">
       <span class="label">Тема</span>
-      <div class="theme-switch">
-        <button data-theme-btn="night" onclick="setTheme('night')">Ночь</button>
-        <button data-theme-btn="light" onclick="setTheme('light')">Светлая</button>
-        <button data-theme-btn="cinema" onclick="setTheme('cinema')">Кинозал</button>
+      <div class="theme-grid" id="themeGrid">
+        <button type="button" data-theme-btn="night" onclick="setTheme('night')"><i class="theme-dot" style="--a:#0C0B17;--b:#7B6DC4"></i>Ночь</button>
+        <button type="button" data-theme-btn="graphite" onclick="setTheme('graphite')"><i class="theme-dot" style="--a:#17181B;--b:#8A93A6"></i>Графит</button>
+        <button type="button" data-theme-btn="forest" onclick="setTheme('forest')"><i class="theme-dot" style="--a:#131B16;--b:#6E9A6B"></i>Лес</button>
+        <button type="button" data-theme-btn="ocean" onclick="setTheme('ocean')"><i class="theme-dot" style="--a:#101A22;--b:#5F8FB8"></i>Океан</button>
+        <button type="button" data-theme-btn="dusk" onclick="setTheme('dusk')"><i class="theme-dot" style="--a:#1B1417;--b:#C2745A"></i>Закат</button>
+        <button type="button" data-theme-btn="cinema" onclick="setTheme('cinema')"><i class="theme-dot" style="--a:#13110B;--b:#B59852"></i>Кинозал</button>
+        <button type="button" data-theme-btn="light" onclick="setTheme('light')"><i class="theme-dot" style="--a:#F6F4EF;--b:#5F51B3"></i>Светлая</button>
+        <button type="button" data-theme-btn="sand" onclick="setTheme('sand')"><i class="theme-dot" style="--a:#F3EEE5;--b:#B5573F"></i>Песок</button>
       </div>
     </div>
     <div class="settings-row" style="align-items:flex-start;">
       <span class="label" style="padding-top:6px;">Акцентный цвет</span>
       <div class="accent-swatches" id="accentSwatches"></div>
+    </div>
+    <div class="settings-row settings-slider-row">
+      <span class="label">Яркость экрана</span>
+      <input type="range" class="settings-slider" id="dimSlider" min="0" max="60" step="1" value="0" aria-label="Яркость экрана" oninput="setScreenComfort()" />
+    </div>
+    <div class="settings-row settings-slider-row">
+      <span class="label">Тёплый тон</span>
+      <input type="range" class="settings-slider" id="warmSlider" min="0" max="40" step="1" value="0" aria-label="Тёплый тон" oninput="setScreenComfort()" />
     </div>
     <div class="settings-row">
       <span class="label">Уведомления о сообщениях</span>
@@ -516,5 +569,6 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
 <script src="/js/app.js"></script>
+<div class="screen-comfort" id="screenComfort" aria-hidden="true"></div>
 </body>
 </html>
